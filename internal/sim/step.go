@@ -8,12 +8,19 @@ type goalSegment struct {
 }
 
 func Step(state *GameState, inputs []InputFrame) {
-	if state == nil || state.GameOver {
+	if state == nil {
 		return
 	}
 
 	state.Tick++
 	homeInput, awayInput := collectTeamInputs(inputs)
+
+	if state.GameOver {
+		if state.UseMenus && state.Phase == MatchPhasePostgame {
+			updatePostgamePhase(state, homeInput, awayInput)
+		}
+		return
+	}
 
 	if state.UseMenus && state.Phase != MatchPhasePlaying {
 		updateMatchPhase(state, homeInput, awayInput)
@@ -854,6 +861,11 @@ func updatePuck(state *GameState) {
 		}
 	}
 
+	if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
+		awardGoal(state, scoringTeam)
+		return
+	}
+
 	if state.Puck.PickupLockTicks > 0 {
 		return
 	}
@@ -870,6 +882,9 @@ func updatePuck(state *GameState) {
 		facing = Vec2{X: attackDir(pickup.Team)}
 	}
 	state.Puck.Position = pickup.Position.Add(facing.Mul(pickup.Radius + state.Puck.Radius + 3.0))
+	if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
+		awardGoal(state, scoringTeam)
+	}
 }
 
 func findPickupSkater(state *GameState) *SkaterState {
@@ -944,6 +959,9 @@ func awardGoal(state *GameState, team Team) {
 	clearShotMetadata(state)
 	if state.InOvertime {
 		state.GameOver = true
+		if state.UseMenus {
+			startPostgamePhase(state)
+		}
 		return
 	}
 	setFaceoff(state)
@@ -961,6 +979,9 @@ func updateClock(state *GameState) {
 	}
 	if state.InOvertime {
 		state.GameOver = true
+		if state.UseMenus {
+			startPostgamePhase(state)
+		}
 		return
 	}
 	if state.Period < RegulationPeriods {
@@ -985,6 +1006,9 @@ func updateClock(state *GameState) {
 		return
 	}
 	state.GameOver = true
+	if state.UseMenus {
+		startPostgamePhase(state)
+	}
 }
 
 func constrainToRink(position Vec2, radius float64) Vec2 {

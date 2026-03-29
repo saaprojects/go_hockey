@@ -218,6 +218,29 @@ func TestCarriedPuckBehindNetDoesNotScore(t *testing.T) {
 		t.Fatalf("expected no away goal from behind the net, got %+v", state.Score)
 	}
 }
+func TestLoosePuckPickedUpAcrossGoalLineScores(t *testing.T) {
+	state := NewGameState()
+	state.FaceoffTicks = 0
+	state.HomeControlled = 1
+	skater := &state.HomeSkaters[state.HomeControlled]
+	skater.Position = Vec2{X: AwayGoalLineX - (skater.Radius + state.Puck.Radius + 2.0), Y: CenterY - 70.0}
+	skater.LookDir = Vec2{X: 1, Y: 0}
+	skater.Velocity = Vec2{}
+	state.Puck.CarrierID = ""
+	state.Puck.Position = skater.Position
+	state.Puck.Velocity = Vec2{}
+	state.Puck.PickupLockTeam = TeamNone
+	state.Puck.PickupLockTicks = 0
+
+	Step(&state, []InputFrame{{Team: TeamHome}})
+
+	if state.Score.Home != 1 {
+		t.Fatalf("expected loose puck pickup at the goal mouth to score, got %+v", state.Score)
+	}
+	if state.FaceoffTicks == 0 {
+		t.Fatalf("expected faceoff reset after pickup goal")
+	}
+}
 
 func TestClockAdvancesToNextRegulationPeriod(t *testing.T) {
 	state := NewGameState()
@@ -371,6 +394,60 @@ func TestIntermissionWaitsForUniqueColorsBeforeAutoResume(t *testing.T) {
 	}
 	if state.PhaseTicks != 0 {
 		t.Fatalf("expected countdown to reach zero while waiting for unique colors, got %d", state.PhaseTicks)
+	}
+}
+func TestMultiplayerGameOverStartsPostgameMenu(t *testing.T) {
+	state := NewMultiplayerGameState()
+	state.Phase = MatchPhasePlaying
+	state.PhaseTicks = 0
+	state.FaceoffTicks = 0
+	state.Period = RegulationPeriods
+	state.ClockTicks = 1
+	state.Score.Home = 2
+	state.Score.Away = 1
+
+	Step(&state, nil)
+
+	if !state.GameOver {
+		t.Fatalf("expected game over at end of regulation")
+	}
+	if state.Phase != MatchPhasePostgame {
+		t.Fatalf("expected postgame phase, got %q", state.Phase)
+	}
+	if state.HomeReady || state.AwayReady {
+		t.Fatalf("expected rematch votes to start cleared")
+	}
+}
+
+func TestPostgameReadyRestartsMultiplayerMatch(t *testing.T) {
+	state := NewMultiplayerGameState()
+	state.GameOver = true
+	state.Phase = MatchPhasePostgame
+	state.HomeColor = TeamColorGreen
+	state.AwayColor = TeamColorOrange
+	state.Score.Home = 4
+	state.Score.Away = 3
+	state.Period = RegulationPeriods
+
+	Step(&state, []InputFrame{{Team: TeamHome, Ready: true}, {Team: TeamAway, Ready: true}})
+
+	if state.GameOver {
+		t.Fatalf("expected rematch votes to restart the game")
+	}
+	if state.Phase != MatchPhasePlaying {
+		t.Fatalf("expected restarted match to be playing, got %q", state.Phase)
+	}
+	if state.Score.Home != 0 || state.Score.Away != 0 {
+		t.Fatalf("expected score reset on rematch, got %+v", state.Score)
+	}
+	if state.Period != 1 {
+		t.Fatalf("expected rematch to restart at period 1, got %d", state.Period)
+	}
+	if state.HomeColor != TeamColorGreen || state.AwayColor != TeamColorOrange {
+		t.Fatalf("expected rematch to preserve colors, got %q and %q", state.HomeColor, state.AwayColor)
+	}
+	if state.FaceoffTicks <= 0 {
+		t.Fatalf("expected rematch to start with a faceoff")
 	}
 }
 

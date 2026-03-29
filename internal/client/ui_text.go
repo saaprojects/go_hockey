@@ -42,6 +42,11 @@ func drawUIText(screen *ebiten.Image, content string, face *text.GoTextFace, x, 
 	text.Draw(screen, content, face, op)
 }
 
+func drawUITextCentered(screen *ebiten.Image, content string, face *text.GoTextFace, centerX, y float64, clr color.Color) {
+	width, _ := measureUIText(content, face)
+	drawUIText(screen, content, face, centerX-width/2, y, clr)
+}
+
 func measureUIText(content string, face *text.GoTextFace) (float64, float64) {
 	return text.Measure(content, face, face.Size*1.25)
 }

@@ -32,15 +32,19 @@ var (
 )
 
 type SoloGame struct {
-	state  sim.GameState
-	paused bool
+	state      sim.GameState
+	menu       matchMenuState
+	action     matchMenuAction
+	standalone bool
 }
 
 func RunSolo() error {
 	ebiten.SetWindowSize(int(sim.WindowWidth), int(sim.WindowHeight))
 	ebiten.SetWindowTitle("Go Hockey - Solo")
 	ebiten.SetTPS(sim.TickRate)
-	return ebiten.RunGame(NewSoloGame())
+	game := NewSoloGame()
+	game.standalone = true
+	return ebiten.RunGame(game)
 }
 
 func NewSoloGame() *SoloGame {
@@ -54,19 +58,47 @@ func NewSoloGameWithColors(homeColor, awayColor sim.TeamColor) *SoloGame {
 	return &SoloGame{state: state}
 }
 
+func (g *SoloGame) ConsumeAction() matchMenuAction {
+	action := g.action
+	g.action = matchMenuActionNone
+	return action
+}
+
+func (g *SoloGame) restartMatch() {
+	homeColor := g.state.HomeColor
+	awayColor := g.state.AwayColor
+	g.state = sim.NewGameState()
+	g.state.HomeColor = homeColor
+	g.state.AwayColor = awayColor
+	g.menu.Close()
+}
+
+func (g *SoloGame) syncMenuState() {
+	if g.state.GameOver {
+		if g.menu.Mode != matchMenuModePostgame {
+			g.menu.Open(matchMenuModePostgame)
+		}
+		return
+	}
+	if g.menu.Mode == matchMenuModePostgame {
+		g.menu.Close()
+	}
+}
+
 func (g *SoloGame) Update() error {
-	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
-		g.paused = !g.paused
+	g.syncMenuState()
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
+		if g.menu.Mode == matchMenuModePause {
+			g.menu.Close()
+		} else if !g.state.GameOver {
+			g.menu.Open(matchMenuModePause)
+		}
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
-		homeColor := g.state.HomeColor
-		awayColor := g.state.AwayColor
-		g.state = sim.NewGameState()
-		g.state.HomeColor = homeColor
-		g.state.AwayColor = awayColor
-		g.paused = false
-	}
-	if g.paused || g.state.GameOver {
+	if g.menu.Visible() {
+		g.updateMatchMenu()
+		if g.standalone && g.action != matchMenuActionNone {
+			return ebiten.Termination
+		}
 		return nil
 	}
 
@@ -78,6 +110,9 @@ func (g *SoloGame) Update() error {
 		Switch: inpututil.IsKeyJustPressed(ebiten.KeyTab),
 	}
 	sim.Step(&g.state, []sim.InputFrame{input})
+	if g.standalone && g.action != matchMenuActionNone {
+		return ebiten.Termination
+	}
 	return nil
 }
 
@@ -102,6 +137,10 @@ func (g *SoloGame) Draw(screen *ebiten.Image) {
 	screen.Fill(colorHUDBackground)
 	g.drawMatch(screen, sim.TeamHome)
 	g.drawHUD(screen)
+	if g.menu.Visible() {
+		title, subtitle, footer, entries := g.matchMenuContent()
+		drawMatchMenuOverlay(screen, title, subtitle, footer, entries, g.menu.Selected)
+	}
 }
 
 func (g *SoloGame) Layout(outsideWidth, outsideHeight int) (int, int) {
@@ -239,17 +278,71 @@ func (g *SoloGame) drawHUD(screen *ebiten.Image) {
 	if g.state.InOvertime {
 		periodLabel = "OT"
 	}
-	status := "Solo mode  WASD move  Shift pass  Space shoot/check  Tab switch  P pause  R restart"
-	if g.paused {
-		status = "Paused  Press P to resume or R to restart"
+	status := "Solo mode  WASD move  Shift pass  Space shoot/check  Tab switch  Esc menu"
+	if g.menu.Mode == matchMenuModePause {
+		status = "Paused  Choose Resume, Restart Match, or Quit to Launcher"
 	}
-	if g.state.GameOver {
-		status = "Game over  Press R to restart solo play"
+	if g.menu.Mode == matchMenuModePostgame {
+		status = "Game over  Choose Play Again or Quit to Launcher"
 	}
 	ebitenutil.DebugPrintAt(screen, "Go Hockey Solo", 20, 18)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d - %d", g.state.Score.Home, g.state.Score.Away), int(sim.CenterX)-24, 20)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %02d:%02d", periodLabel, minutes, seconds), 20, 42)
 	ebitenutil.DebugPrintAt(screen, status, 20, int(sim.WindowHeight)-28)
+}
+
+func (g *SoloGame) matchMenuContent() (string, string, string, []matchMenuEntry) {
+	switch g.menu.Mode {
+	case matchMenuModePause:
+		return "Pause Menu", "Match paused. Choose what you want to do next.", "Enter selects. Esc resumes the match.", []matchMenuEntry{{Label: "Resume"}, {Label: "Restart Match"}, {Label: "Quit to Launcher"}}
+	case matchMenuModePostgame:
+		return g.postgameTitle(), "The match is over.", "Enter selects an option.", []matchMenuEntry{{Label: "Play Again"}, {Label: "Quit to Launcher"}}
+	default:
+		return "", "", "", nil
+	}
+}
+
+func (g *SoloGame) updateMatchMenu() {
+	entries := g.matchMenuContentEntries()
+	if len(entries) == 0 {
+		return
+	}
+	if choice, activated := updateMatchMenuSelection(&g.menu, entries); activated {
+		switch g.menu.Mode {
+		case matchMenuModePause:
+			switch choice {
+			case 0:
+				g.menu.Close()
+			case 1:
+				g.restartMatch()
+			case 2:
+				g.action = matchMenuActionQuit
+			}
+		case matchMenuModePostgame:
+			switch choice {
+			case 0:
+				g.restartMatch()
+			case 1:
+				g.action = matchMenuActionQuit
+			}
+		}
+	}
+}
+
+func (g *SoloGame) matchMenuContentEntries() []matchMenuEntry {
+	_, _, _, entries := g.matchMenuContent()
+	return entries
+}
+
+func (g *SoloGame) postgameTitle() string {
+	switch {
+	case g.state.Score.Home > g.state.Score.Away:
+		return "You Win"
+	case g.state.Score.Home < g.state.Score.Away:
+		return "You Lose"
+	default:
+		return "Game Over"
+	}
 }
 
 func (g *SoloGame) drawReadyOverlay(screen *ebiten.Image, localTeam sim.Team, subtitle string) {

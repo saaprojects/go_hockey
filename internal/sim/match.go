@@ -8,6 +8,7 @@ const (
 	MatchPhasePlaying      MatchPhase = "playing"
 	MatchPhasePregame      MatchPhase = "pregame"
 	MatchPhaseIntermission MatchPhase = "intermission"
+	MatchPhasePostgame     MatchPhase = "postgame"
 )
 
 const (
@@ -52,6 +53,13 @@ func startPlayingPhase(state *GameState) {
 	state.AwayReady = false
 }
 
+func startPostgamePhase(state *GameState) {
+	state.Phase = MatchPhasePostgame
+	state.PhaseTicks = 0
+	state.HomeReady = false
+	state.AwayReady = false
+}
+
 func updateMatchPhase(state *GameState, homeInput, awayInput TeamInput) {
 	applyPhaseInput(state, TeamHome, homeInput)
 	applyPhaseInput(state, TeamAway, awayInput)
@@ -67,6 +75,14 @@ func updateMatchPhase(state *GameState, homeInput, awayInput TeamInput) {
 	}
 	if state.PhaseTicks == 0 && state.HomeColor != state.AwayColor {
 		startPlayingPhase(state)
+	}
+}
+
+func updatePostgamePhase(state *GameState, homeInput, awayInput TeamInput) {
+	applyPostgameInput(state, TeamHome, homeInput)
+	applyPostgameInput(state, TeamAway, awayInput)
+	if state.HomeReady && state.AwayReady {
+		restartMultiplayerMatch(state)
 	}
 }
 
@@ -88,6 +104,24 @@ func applyPhaseInput(state *GameState, team Team, input TeamInput) {
 			setTeamReady(state, team, true)
 		}
 	}
+}
+
+func applyPostgameInput(state *GameState, team Team, input TeamInput) {
+	if !input.Ready {
+		return
+	}
+	setTeamReady(state, team, !teamReady(state, team))
+}
+
+func restartMultiplayerMatch(state *GameState) {
+	homeColor := state.HomeColor
+	awayColor := state.AwayColor
+	next := NewGameState()
+	next.UseMenus = true
+	next.HomeColor = homeColor
+	next.AwayColor = awayColor
+	startPlayingPhase(&next)
+	*state = next
 }
 
 func nextTeamColor(current TeamColor, delta int) TeamColor {

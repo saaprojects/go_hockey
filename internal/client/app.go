@@ -113,16 +113,14 @@ func (a *App) Update() error {
 	a.pollDiscoveryUpdates()
 	switch a.screen {
 	case appScreenSolo:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			a.returnToMenu("")
-			return nil
+		if err := a.solo.Update(); err != nil {
+			return err
 		}
-		return a.solo.Update()
+		if a.solo.ConsumeAction() == matchMenuActionQuit {
+			a.returnToMenu("")
+		}
+		return nil
 	case appScreenRemote:
-		if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-			a.returnToMenu("")
-			return nil
-		}
 		select {
 		case err := <-a.hostServeErr:
 			if err != nil {
@@ -131,7 +129,17 @@ func (a *App) Update() error {
 			}
 		default:
 		}
-		return a.remote.Update()
+		if err := a.remote.Update(); err != nil {
+			return err
+		}
+		status := a.remote.disconnected
+		switch a.remote.ConsumeAction() {
+		case matchMenuActionQuit:
+			a.returnToMenu(status)
+		case matchMenuActionRoomMenu:
+			a.returnToRoomMenu(status)
+		}
+		return nil
 	case appScreenJoinBrowser:
 		return a.updateJoinBrowser()
 	default:
@@ -590,10 +598,35 @@ func (a *App) returnToMenu(status string) {
 	a.solo = nil
 	a.stopHostedServer()
 	a.screen = appScreenMenu
+	a.menu.status = status
+	ebiten.SetWindowTitle("Go Hockey")
+}
+
+func (a *App) returnToRoomMenu(status string) {
+	if a.remote != nil && a.remote.client != nil {
+		_ = a.remote.client.Close()
+	}
+	a.remote = nil
+	a.solo = nil
+	a.stopHostedServer()
+	if a.browser == nil {
+		a.screen = appScreenMenu
+		if status == "" {
+			status = "LAN discovery unavailable"
+		}
+		a.menu.status = status
+		ebiten.SetWindowTitle("Go Hockey")
+		return
+	}
+	a.screen = appScreenJoinBrowser
 	if status != "" {
 		a.menu.status = status
+	} else if len(a.menu.rooms) == 0 {
+		a.menu.status = "Searching for LAN rooms"
+	} else {
+		a.menu.status = ""
 	}
-	ebiten.SetWindowTitle("Go Hockey")
+	ebiten.SetWindowTitle("Go Hockey - Join LAN Room")
 }
 
 func (a *App) stopHostedServer() {
