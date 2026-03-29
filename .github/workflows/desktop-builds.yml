@@ -1,0 +1,113 @@
+name: Desktop Builds
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-windows:
+    name: Windows EXE
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build Windows executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\windows | Out-Null
+          go build -trimpath -ldflags="-s -w" -o dist\windows\GoHockey.exe .\hockey-v2
+          Compress-Archive -LiteralPath dist\windows\GoHockey.exe -DestinationPath dist\GoHockey-windows-amd64.zip -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoHockey-windows-amd64
+          path: dist/GoHockey-windows-amd64.zip
+          if-no-files-found: error
+
+  build-macos:
+    name: macOS App (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            arch: amd64
+          - runner: macos-14
+            arch: arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build macOS app bundle
+        shell: bash
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          APP_DIR="dist/GoHockey.app"
+          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+          cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>GoHockey</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.gohockey.app</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>Go Hockey</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>12.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+          /usr/bin/touch "$APP_DIR/Contents/PkgInfo"
+          echo "APPL????" > "$APP_DIR/Contents/PkgInfo"
+          go build -trimpath -ldflags="-s -w" -o "$APP_DIR/Contents/MacOS/GoHockey" ./hockey-v2
+          chmod +x "$APP_DIR/Contents/MacOS/GoHockey"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "dist/GoHockey-macos-${GOARCH}.zip"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoHockey-macos-${{ matrix.arch }}
+          path: dist/GoHockey-macos-${{ matrix.arch }}.zip
+          if-no-files-found: error
