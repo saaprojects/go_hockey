@@ -1,37 +1,28 @@
-package client
+package app
 
 import (
 	"fmt"
 	"strings"
 
+	clientinput "hockeyv2/internal/client/input"
+	"hockeyv2/internal/client/render"
+	"hockeyv2/internal/client/ui"
 	"hockeyv2/internal/netcode"
 	"hockeyv2/internal/sim"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 type RemoteGame struct {
-	SoloGame
 	client             *netcode.Client
 	localTeam          sim.Team
+	state              sim.GameState
+	menu               matchMenuState
+	action             matchMenuAction
+	standalone         bool
 	disconnected       string
 	pendingRematchVote bool
-}
-
-func RunRemote(addr string) error {
-	game, err := NewRemoteGame(addr)
-	if err != nil {
-		return err
-	}
-	defer game.Close()
-
-	teamLabel := strings.ToUpper(string(game.localTeam))
-	ebiten.SetWindowSize(int(sim.WindowWidth), int(sim.WindowHeight))
-	ebiten.SetWindowTitle(fmt.Sprintf("Go Hockey - Online %s", teamLabel))
-	ebiten.SetTPS(sim.TickRate)
-	return ebiten.RunGame(game)
 }
 
 func NewRemoteGame(addr string) (*RemoteGame, error) {
@@ -46,9 +37,9 @@ func NewRemoteGame(addr string) (*RemoteGame, error) {
 
 func newRemoteGame(clientConn *netcode.Client) *RemoteGame {
 	return &RemoteGame{
-		SoloGame:  SoloGame{state: sim.NewGameState()},
 		client:    clientConn,
 		localTeam: clientConn.Team(),
+		state:     sim.NewGameState(),
 	}
 }
 
@@ -57,6 +48,16 @@ func (g *RemoteGame) Close() error {
 		return nil
 	}
 	return g.client.Close()
+}
+
+func (g *RemoteGame) ConsumeAction() matchMenuAction {
+	action := g.action
+	g.action = matchMenuActionNone
+	return action
+}
+
+func (g *RemoteGame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return int(sim.WindowWidth), int(sim.WindowHeight)
 }
 
 func (g *RemoteGame) Update() error {
@@ -76,7 +77,7 @@ snapshotsDone:
 	default:
 	}
 
-	g.syncRemoteMenuState()
+	g.syncMenuState()
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		if g.menu.Mode == matchMenuModePause {
 			g.menu.Close()
@@ -88,10 +89,9 @@ snapshotsDone:
 		g.updateRemoteMenu()
 	}
 	if g.disconnected == "" {
-		input := g.currentInput()
-		if err := g.client.SendInput(input); err != nil {
+		if err := g.client.SendInput(g.currentInput()); err != nil {
 			g.disconnected = "Disconnected from server"
-			g.syncRemoteMenuState()
+			g.syncMenuState()
 		}
 	}
 	if g.standalone && g.action != matchMenuActionNone {
@@ -100,7 +100,19 @@ snapshotsDone:
 	return nil
 }
 
-func (g *RemoteGame) syncRemoteMenuState() {
+func (g *RemoteGame) Draw(screen *ebiten.Image) {
+	render.DrawMatch(screen, g.state, g.localTeam)
+	if g.state.Phase != sim.MatchPhasePlaying && !g.state.GameOver {
+		render.DrawReadyOverlay(screen, g.state, g.localTeam, "Connected to online match")
+	}
+	render.DrawNetworkHUD(screen, g.state, fmt.Sprintf("Go Hockey Online %s", strings.ToUpper(string(g.localTeam))), g.networkStatus())
+	if g.menu.Visible() {
+		title, subtitle, footer := g.remoteMenuText()
+		ui.DrawModalMenu(screen, title, subtitle, footer, g.remoteMenuEntries(), g.menu.Selected)
+	}
+}
+
+func (g *RemoteGame) syncMenuState() {
 	switch {
 	case g.disconnected != "":
 		if g.menu.Mode != matchMenuModeDisconnected {
@@ -119,65 +131,42 @@ func (g *RemoteGame) syncRemoteMenuState() {
 
 func (g *RemoteGame) updateRemoteMenu() {
 	entries := g.remoteMenuEntries()
-	if len(entries) == 0 {
+	selected, activatedIndex, activated := clientinput.UpdateSelectableMenu(g.menu.Selected, entries, func(index int) ui.Rect {
+		return ui.ModalMenuOptionRect(index, len(entries))
+	})
+	g.menu.Selected = selected
+	if !activated {
 		return
 	}
-	if choice, activated := updateMatchMenuSelection(&g.menu, entries); activated {
-		switch g.menu.Mode {
-		case matchMenuModePause:
-			switch choice {
-			case 0:
-				g.menu.Close()
-			case 1:
-				g.action = matchMenuActionQuit
-			case 2:
-				g.action = matchMenuActionRoomMenu
-			}
-		case matchMenuModePostgame:
-			switch choice {
-			case 0:
-				if !g.localTeamReady() {
-					g.pendingRematchVote = true
-				}
-			case 1:
-				g.action = matchMenuActionQuit
-			case 2:
-				g.action = matchMenuActionRoomMenu
-			}
-		case matchMenuModeDisconnected:
-			switch choice {
-			case 0:
-				g.action = matchMenuActionQuit
-			case 1:
-				g.action = matchMenuActionRoomMenu
-			}
-		}
-	}
-}
-
-func (g *RemoteGame) remoteMenuEntries() []matchMenuEntry {
 	switch g.menu.Mode {
 	case matchMenuModePause:
-		return []matchMenuEntry{{Label: "Resume"}, {Label: "Quit Match"}, {Label: "Room Menu"}}
-	case matchMenuModePostgame:
-		playAgain := matchMenuEntry{Label: "Play Again"}
-		if g.localTeamReady() || g.pendingRematchVote {
-			playAgain.Label = "Waiting for Other Player"
-			playAgain.Disabled = true
+		switch activatedIndex {
+		case 0:
+			g.menu.Close()
+		case 1:
+			g.action = matchMenuActionQuit
+		case 2:
+			g.action = g.roomMenuAction()
 		}
-		return []matchMenuEntry{playAgain, {Label: "Quit Match"}, {Label: "Room Menu"}}
+	case matchMenuModePostgame:
+		switch activatedIndex {
+		case 0:
+			if !g.localTeamReady() {
+				g.pendingRematchVote = true
+			}
+		case 1:
+			g.action = matchMenuActionQuit
+		case 2:
+			g.action = g.roomMenuAction()
+		}
 	case matchMenuModeDisconnected:
-		return []matchMenuEntry{{Label: "Quit Match"}, {Label: "Room Menu"}}
-	default:
-		return nil
+		switch activatedIndex {
+		case 0:
+			g.action = matchMenuActionQuit
+		case 1:
+			g.action = g.roomMenuAction()
+		}
 	}
-}
-
-func (g *RemoteGame) localTeamReady() bool {
-	if g.localTeam == sim.TeamHome {
-		return g.state.HomeReady
-	}
-	return g.state.AwayReady
 }
 
 func (g *RemoteGame) currentInput() sim.InputFrame {
@@ -193,29 +182,42 @@ func (g *RemoteGame) currentInput() sim.InputFrame {
 		return input
 	}
 	if g.state.Phase != sim.MatchPhasePlaying {
-		mouseAction := readyOverlayMouseAction(g.localTeam)
-		input.Ready = inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) || mouseAction.ready
-		input.ColorPrev = inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || mouseAction.colorPrev
-		input.ColorNext = inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || mouseAction.colorNext
+		action := clientinput.ReadyOverlayMouseAction(
+			render.ReadyOverlayColorPrevRect(g.localTeam),
+			render.ReadyOverlayColorNextRect(g.localTeam),
+			render.ReadyOverlayReadyRect(g.localTeam),
+		)
+		input.Ready = inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) || action.Ready
+		input.ColorPrev = inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || action.ColorPrev
+		input.ColorNext = inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || action.ColorNext
 		return input
 	}
-	input.Move = movementVector()
+	input.Move = clientinput.MovementVector()
 	input.Shoot = inpututil.IsKeyJustPressed(ebiten.KeySpace)
 	input.Pass = inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight)
 	input.Switch = inpututil.IsKeyJustPressed(ebiten.KeyTab)
 	return input
 }
 
-func (g *RemoteGame) Draw(screen *ebiten.Image) {
-	screen.Fill(colorHUDBackground)
-	g.drawMatch(screen, g.localTeam)
-	if g.state.Phase != sim.MatchPhasePlaying && !g.state.GameOver {
-		g.drawReadyOverlay(screen, g.localTeam, "Connected to online match")
+func (g *RemoteGame) remoteMenuEntries() []ui.MenuEntry {
+	roomEntry := ui.MenuEntry{Label: "Room Menu"}
+	if g.standalone {
+		roomEntry = ui.MenuEntry{Label: "Quit Match"}
 	}
-	g.drawNetworkHUD(screen)
-	if g.menu.Visible() {
-		title, subtitle, footer := g.remoteMenuText()
-		drawMatchMenuOverlay(screen, title, subtitle, footer, g.remoteMenuEntries(), g.menu.Selected)
+	switch g.menu.Mode {
+	case matchMenuModePause:
+		return []ui.MenuEntry{{Label: "Resume"}, {Label: "Quit Match"}, roomEntry}
+	case matchMenuModePostgame:
+		playAgain := ui.MenuEntry{Label: "Play Again"}
+		if g.localTeamReady() || g.pendingRematchVote {
+			playAgain.Label = "Waiting for Other Player"
+			playAgain.Disabled = true
+		}
+		return []ui.MenuEntry{playAgain, {Label: "Quit Match"}, roomEntry}
+	case matchMenuModeDisconnected:
+		return []ui.MenuEntry{{Label: "Quit Match"}, roomEntry}
+	default:
+		return nil
 	}
 }
 
@@ -243,27 +245,7 @@ func (g *RemoteGame) remoteMenuText() (string, string, string) {
 	}
 }
 
-func (g *RemoteGame) scoreFor(team sim.Team) int {
-	if team == sim.TeamHome {
-		return g.state.Score.Home
-	}
-	return g.state.Score.Away
-}
-
-func (g *RemoteGame) opponentTeam() sim.Team {
-	if g.localTeam == sim.TeamHome {
-		return sim.TeamAway
-	}
-	return sim.TeamHome
-}
-
-func (g *RemoteGame) drawNetworkHUD(screen *ebiten.Image) {
-	minutes := g.state.ClockTicks / (sim.TickRate * 60)
-	seconds := (g.state.ClockTicks / sim.TickRate) % 60
-	periodLabel := fmt.Sprintf("P%d", g.state.Period)
-	if g.state.InOvertime {
-		periodLabel = "OT"
-	}
+func (g *RemoteGame) networkStatus() string {
 	status := fmt.Sprintf("Online %s  WASD move  Shift pass  Space shoot/check  Tab switch  Esc menu", strings.ToUpper(string(g.localTeam)))
 	if g.state.Phase != sim.MatchPhasePlaying && !g.state.GameOver {
 		status = "Menu controls: A/Left and D/Right or click arrows change color  Space/Enter or click Ready toggles ready"
@@ -277,8 +259,33 @@ func (g *RemoteGame) drawNetworkHUD(screen *ebiten.Image) {
 	if g.menu.Mode == matchMenuModeDisconnected {
 		status = "Disconnected from server  Choose Quit Match or Room Menu"
 	}
-	ebitenutil.DebugPrintAt(screen, "Go Hockey Online", 20, 18)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d - %d", g.state.Score.Home, g.state.Score.Away), int(sim.CenterX)-24, 20)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %02d:%02d", periodLabel, minutes, seconds), 20, 42)
-	ebitenutil.DebugPrintAt(screen, status, 20, int(sim.WindowHeight)-28)
+	return status
+}
+
+func (g *RemoteGame) roomMenuAction() matchMenuAction {
+	if g.standalone {
+		return matchMenuActionQuit
+	}
+	return matchMenuActionRoomMenu
+}
+
+func (g *RemoteGame) localTeamReady() bool {
+	if g.localTeam == sim.TeamHome {
+		return g.state.HomeReady
+	}
+	return g.state.AwayReady
+}
+
+func (g *RemoteGame) scoreFor(team sim.Team) int {
+	if team == sim.TeamHome {
+		return g.state.Score.Home
+	}
+	return g.state.Score.Away
+}
+
+func (g *RemoteGame) opponentTeam() sim.Team {
+	if g.localTeam == sim.TeamHome {
+		return sim.TeamAway
+	}
+	return sim.TeamHome
 }

@@ -1,4 +1,4 @@
-package client
+package render
 
 import (
 	"image/color"
@@ -33,7 +33,7 @@ func paletteForTeam(state sim.GameState, team sim.Team) teamPalette {
 	return paletteForTeamColor(state.AwayColor)
 }
 
-func teamColorLabel(teamColor sim.TeamColor) string {
+func TeamColorLabel(teamColor sim.TeamColor) string {
 	switch teamColor {
 	case sim.TeamColorBlack:
 		return "Black"
