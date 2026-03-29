@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Optional tag to publish release assets to, like v0.1.0
-        required: false
+        description: Release tag to publish assets to, like v0.1.0
+        required: true
         type: string
   push:
     tags:
@@ -15,8 +15,34 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release_tag.outputs.tag }}
+
+    steps:
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure GitHub release exists
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          overwrite_files: true
+
   build-windows:
     name: Windows EXE
+    needs: prepare-release
     runs-on: windows-latest
 
     steps:
@@ -38,21 +64,23 @@ jobs:
           go build -trimpath -ldflags="-s -w" -o dist\windows\GoHockey.exe .\hockey-v2
           Compress-Archive -LiteralPath dist\windows\GoHockey.exe -DestinationPath dist\GoHockey-windows-amd64.zip -Force
 
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload Windows asset to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: GoHockey-windows-amd64
-          path: dist/GoHockey-windows-amd64.zip
-          if-no-files-found: error
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: dist/GoHockey-windows-amd64.zip
+          fail_on_unmatched_files: true
+          overwrite_files: true
 
   build-macos:
     name: macOS App (${{ matrix.arch }})
+    needs: prepare-release
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-13
+          - runner: macos-15-intel
             arch: amd64
           - runner: macos-14
             arch: arm64
@@ -112,43 +140,11 @@ jobs:
           chmod +x "$APP_DIR/Contents/MacOS/GoHockey"
           ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "dist/GoHockey-macos-${GOARCH}.zip"
 
-      - name: Upload macOS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: GoHockey-macos-${{ matrix.arch }}
-          path: dist/GoHockey-macos-${{ matrix.arch }}.zip
-          if-no-files-found: error
-
-  publish-release:
-    name: Publish Release Assets
-    needs:
-      - build-windows
-      - build-macos
-    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: release-assets
-          pattern: GoHockey-*
-          merge-multiple: true
-
-      - name: Resolve release tag
-        id: release_tag
-        shell: bash
-        run: |
-          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
-            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Attach assets to GitHub release
+      - name: Upload macOS asset to release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.release_tag.outputs.tag }}
-          files: release-assets/*.zip
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          files: dist/GoHockey-macos-${{ matrix.arch }}.zip
           fail_on_unmatched_files: true
-          generate_release_notes: true
+          overwrite_files: true
+
