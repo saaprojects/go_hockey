@@ -161,46 +161,81 @@ func (a *App) drawMenu(screen *ebiten.Image) {
 	drawRoundedFill(screen, sim.RinkLeft-10, sim.RinkTop-10, sim.RinkRight-sim.RinkLeft+20, sim.RinkBottom-sim.RinkTop+20, sim.RinkCornerRadius+10, colorBoardOutline)
 	drawRoundedFill(screen, sim.RinkLeft, sim.RinkTop, sim.RinkRight-sim.RinkLeft, sim.RinkBottom-sim.RinkTop, sim.RinkCornerRadius, colorIce)
 
-	ebitenutil.DebugPrintAt(screen, "Hockey 26 v2", int(sim.CenterX)-52, 54)
-	ebitenutil.DebugPrintAt(screen, "Choose a mode from the same client", int(sim.CenterX)-118, 80)
-	ebitenutil.DebugPrintAt(screen, "Enter/Space start  Up/Down choose  Esc returns here from a match", int(sim.CenterX)-180, 104)
+	topPanelX := sim.CenterX - 290.0
+	topPanelY := 42.0
+	topPanelWidth := 580.0
+	topPanelHeight := 102.0
+	footerX := sim.CenterX - 330.0
+	footerY := 494.0
+	footerWidth := 660.0
+	footerHeight := 126.0
 
-	cardX := sim.CenterX - 210
-	cardY := 180.0
-	cardWidth := 420.0
-	cardHeight := 78.0
-	gap := 20.0
+	topFill := color.RGBA{0xf8, 0xfb, 0xff, 0xf4}
+	footerFill := color.RGBA{0x10, 0x22, 0x39, 0xdd}
+	mutedText := color.RGBA{0x5b, 0x6c, 0x80, 0xff}
+	lightText := color.RGBA{0xee, 0xf5, 0xff, 0xff}
+	accentText := color.RGBA{0x9e, 0xcf, 0xff, 0xff}
+
+	ebitenutil.DrawRect(screen, topPanelX+8, topPanelY+10, topPanelWidth, topPanelHeight, colorPanelShadow)
+	drawRoundedFill(screen, topPanelX, topPanelY, topPanelWidth, topPanelHeight, 24, topFill)
+	title := "Hockey 26 v2"
+	titleWidth, _ := measureUIText(title, uiTitleFace)
+	drawUIText(screen, title, uiTitleFace, sim.CenterX-titleWidth/2, 60, colorTextDark)
+	subtitle := "Choose solo, host, or join from this same client"
+	subtitleWidth, _ := measureUIText(subtitle, uiBodyFace)
+	drawUIText(screen, subtitle, uiBodyFace, sim.CenterX-subtitleWidth/2, 96, colorTextDark)
+	controls := "Enter or Space starts, Up or Down chooses, Esc returns here from a match"
+	controlsWidth, _ := measureUIText(controls, uiSmallFace)
+	drawUIText(screen, controls, uiSmallFace, sim.CenterX-controlsWidth/2, 122, mutedText)
+
+	cardX := sim.CenterX - 250.0
+	cardY := 176.0
+	cardWidth := 500.0
+	cardHeight := 98.0
+	gap := 22.0
 	labels := []string{"Solo Game", "Host Multiplayer", "Join Multiplayer"}
 	details := []string{
 		"Play locally against AI in the same client.",
 		"Start a local server and join it from this window.",
-		fmt.Sprintf("Connect to another host. Address: %s", a.menu.joinAddr),
+		fmt.Sprintf("Connect to another host at %s", a.menu.joinAddr),
 	}
 	for index, label := range labels {
 		y := cardY + float64(index)*(cardHeight+gap)
-		selected := a.menu.selected == menuOption(index)
-		fill := colorPanel
-		stripe := color.RGBA{0x4a, 0x6c, 0x8f, 0xff}
-		if selected {
-			fill = color.RGBA{0xff, 0xff, 0xff, 0xf8}
-			stripe = color.RGBA{0x1f, 0x7a, 0xe0, 0xff}
-		}
-		ebitenutil.DrawRect(screen, cardX+6, y+8, cardWidth, cardHeight, colorPanelShadow)
-		drawRoundedFill(screen, cardX, y, cardWidth, cardHeight, 18, fill)
-		ebitenutil.DrawRect(screen, cardX, y, 14, cardHeight, stripe)
-		ebitenutil.DebugPrintAt(screen, label, int(cardX)+30, int(y)+18)
-		ebitenutil.DebugPrintAt(screen, details[index], int(cardX)+30, int(y)+42)
+		a.drawMenuOptionCard(screen, cardX, y, cardWidth, cardHeight, label, details[index], a.menu.selected == menuOption(index))
 	}
 
-	paletteNames := []string{"Black", "Orange", "Green", "Blue", "Red"}
-	ebitenutil.DebugPrintAt(screen, "Multiplayer team colors:", int(sim.CenterX)-90, 498)
-	ebitenutil.DebugPrintAt(screen, strings.Join(paletteNames, "  |  "), int(sim.CenterX)-112, 522)
-	if a.menu.selected == menuOptionJoin {
-		ebitenutil.DebugPrintAt(screen, "Type to edit the join address. Backspace deletes. Tab resets to 127.0.0.1:4242.", int(sim.CenterX)-230, 556)
-	}
+	ebitenutil.DrawRect(screen, footerX+8, footerY+10, footerWidth, footerHeight, color.RGBA{0x03, 0x0b, 0x14, 0x55})
+	drawRoundedFill(screen, footerX, footerY, footerWidth, footerHeight, 24, footerFill)
+	colorsLine := "Multiplayer colors: Black  |  Orange  |  Green  |  Blue  |  Red"
+	colorsWidth, _ := measureUIText(colorsLine, uiBodyFace)
+	drawUIText(screen, colorsLine, uiBodyFace, sim.CenterX-colorsWidth/2, 522, lightText)
+	joinHelp := "When Join Multiplayer is selected, type to edit the address. Backspace deletes. Tab resets to 127.0.0.1:4242."
+	joinHelpWidth, _ := measureUIText(joinHelp, uiSmallFace)
+	drawUIText(screen, joinHelp, uiSmallFace, sim.CenterX-joinHelpWidth/2, 556, accentText)
 	if a.menu.status != "" {
-		ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Status: %s", a.menu.status), int(sim.CenterX)-160, 592)
+		statusWidth, _ := measureUIText(a.menu.status, uiBodyFace)
+		drawUIText(screen, a.menu.status, uiBodyFace, sim.CenterX-statusWidth/2, 592, lightText)
 	}
+}
+
+func (a *App) drawMenuOptionCard(screen *ebiten.Image, x, y, width, height float64, label, detail string, selected bool) {
+	cardFill := color.RGBA{0xf7, 0xfb, 0xff, 0xfa}
+	stripe := color.RGBA{0x4e, 0x72, 0x97, 0xff}
+	titleColor := colorTextDark
+	detailColor := color.RGBA{0x4f, 0x60, 0x74, 0xff}
+	shadow := colorPanelShadow
+	if selected {
+		cardFill = color.RGBA{0x16, 0x35, 0x58, 0xfa}
+		stripe = color.RGBA{0x46, 0x9b, 0xff, 0xff}
+		titleColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
+		detailColor = color.RGBA{0xdd, 0xee, 0xff, 0xff}
+		shadow = color.RGBA{0x02, 0x08, 0x11, 0x70}
+	}
+	ebitenutil.DrawRect(screen, x+8, y+10, width, height, shadow)
+	drawRoundedFill(screen, x, y, width, height, 20, cardFill)
+	ebitenutil.DrawRect(screen, x, y, 18, height, stripe)
+	drawUIText(screen, label, uiBodyFace, x+36, y+24, titleColor)
+	drawUIText(screen, detail, uiSmallFace, x+36, y+58, detailColor)
 }
 
 func (a *App) startHostedRemote(listenAddr string) error {
