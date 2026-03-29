@@ -28,7 +28,6 @@ Launcher controls:
 - `Enter` or `Space`: launch the selected option
 - When `Join Multiplayer` is selected, type to edit the server address
 - `Backspace`: delete one character from the join address
-- `Tab`: reset the join address to `127.0.0.1:4242`
 
 ## In-match controls
 
@@ -55,7 +54,7 @@ go run ./cmd/hockey-v2 -host
 Then open a second terminal for the other player:
 
 ```powershell
-go run ./cmd/hockey-v2 -join 127.0.0.1:4242
+go run ./cmd/hockey-v2 -join <your local IP>:4242
 ```
 
 The first player to join gets `home`. The second gets `away`.
