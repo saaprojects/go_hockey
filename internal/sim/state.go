@@ -104,6 +104,8 @@ type GameState struct {
 	ClockTicks            int
 	FaceoffTicks          int
 	PhaseTicks            int
+	GoalPauseTicks        int
+	PuckTrapTicks         int
 	InOvertime            bool
 	GameOver              bool
 	UseMenus              bool

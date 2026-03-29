@@ -115,9 +115,9 @@ func (a *App) Draw(screen *ebiten.Image) {
 
 func (a *App) launchSetupModel() render.LaunchSetupModel {
 	model := render.LaunchSetupModel{
-		ModeLabel:    "Single Player Game Setup",
-		Description:  "Pick your team color, then start a single player match against the computer.",
-		ConfirmLabel: "Start Single Player Game",
+		ModeLabel:    "Solo Game Setup",
+		Description:  "Pick your team color, then start a local AI match.",
+		ConfirmLabel: "Start Solo Game",
 		Color:        a.setup.Color,
 		Status:       a.menu.Status,
 	}
@@ -429,3 +429,4 @@ func (a *App) joinRoomAtCursor() (int, bool) {
 	}
 	return 0, false
 }
+

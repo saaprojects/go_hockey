@@ -124,6 +124,23 @@ func restartMultiplayerMatch(state *GameState) {
 	*state = next
 }
 
+func goalPauseSecondsForColor(color TeamColor) float64 {
+	switch color {
+	case TeamColorBlack:
+		return GoalPauseBlackSeconds
+	case TeamColorOrange:
+		return GoalPauseOrangeSeconds
+	case TeamColorGreen:
+		return GoalPauseGreenSeconds
+	case TeamColorBlue:
+		return GoalPauseBlueSeconds
+	case TeamColorRed:
+		return GoalPauseRedSeconds
+	default:
+		return GoalPauseDefault
+	}
+}
+
 func nextTeamColor(current TeamColor, delta int) TeamColor {
 	if delta == 0 {
 		delta = 1

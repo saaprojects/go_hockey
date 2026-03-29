@@ -20,6 +20,7 @@ type RemoteGame struct {
 	state              sim.GameState
 	menu               matchMenuState
 	action             matchMenuAction
+	sounds             *soundboard
 	standalone         bool
 	disconnected       string
 	pendingRematchVote bool
@@ -40,6 +41,7 @@ func newRemoteGame(clientConn *netcode.Client) *RemoteGame {
 		client:    clientConn,
 		localTeam: clientConn.Team(),
 		state:     sim.NewGameState(),
+		sounds:    defaultSoundboard(),
 	}
 }
 
@@ -64,7 +66,9 @@ func (g *RemoteGame) Update() error {
 	for {
 		select {
 		case snapshot := <-g.client.Snapshots():
+			previousState := g.state
 			g.state = snapshot
+			playMatchStateSounds(g.sounds, previousState, g.state)
 		default:
 			goto snapshotsDone
 		}

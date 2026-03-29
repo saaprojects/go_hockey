@@ -50,7 +50,7 @@ func DrawLauncherMenu(screen *ebiten.Image, model LauncherMenuModel) {
 	ui.DrawTextCentered(screen, "Click a mode card to continue. Keyboard still works if you want it.", ui.SmallFace(), sim.CenterX, 152, ui.TextMutedColor)
 
 	cursorX, cursorY := ebiten.CursorPosition()
-	labels := []string{"Single Player Game", "Host Multiplayer", "Join Multiplayer"}
+	labels := []string{"Solo Game", "Host Multiplayer", "Join Multiplayer"}
 	details := []string{
 		"Play against AI locally with one keyboard.",
 		"Start a LAN server and jump in from this client.",
@@ -293,7 +293,7 @@ func launcherStatus(model LauncherMenuModel) string {
 	}
 	switch model.SelectedOption {
 	case 0:
-		return "Choose Single Player Game to pick your color and start a single player match against the computer."
+		return "Choose Solo Game to pick your color and start a local match against the computer."
 	case 1:
 		return "Choose Host Multiplayer to pick your color and open a LAN room."
 	default:
@@ -389,3 +389,4 @@ func truncateLabel(value string, maxRunes int) string {
 	}
 	return string(runes[:maxRunes-3]) + "..."
 }
+

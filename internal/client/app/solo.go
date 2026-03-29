@@ -14,6 +14,7 @@ type SoloGame struct {
 	state      sim.GameState
 	menu       matchMenuState
 	action     matchMenuAction
+	sounds     *soundboard
 	standalone bool
 }
 
@@ -25,7 +26,7 @@ func NewSoloGameWithColors(homeColor, awayColor sim.TeamColor) *SoloGame {
 	state := sim.NewGameState()
 	state.HomeColor = homeColor
 	state.AwayColor = awayColor
-	return &SoloGame{state: state}
+	return &SoloGame{state: state, sounds: defaultSoundboard()}
 }
 
 func (g *SoloGame) ConsumeAction() matchMenuAction {
@@ -62,7 +63,9 @@ func (g *SoloGame) Update() error {
 		Pass:   inpututil.IsKeyJustPressed(ebiten.KeyShiftLeft) || inpututil.IsKeyJustPressed(ebiten.KeyShiftRight),
 		Switch: inpututil.IsKeyJustPressed(ebiten.KeyTab),
 	}
+	previousState := g.state
 	sim.Step(&g.state, []sim.InputFrame{input})
+	playMatchStateSounds(g.sounds, previousState, g.state)
 	if g.standalone && g.action != matchMenuActionNone {
 		return ebiten.Termination
 	}

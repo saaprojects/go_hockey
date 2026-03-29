@@ -27,6 +27,15 @@ func Step(state *GameState, inputs []InputFrame) {
 		return
 	}
 
+	if state.GoalPauseTicks > 0 {
+		state.GoalPauseTicks--
+		updateGoalies(state)
+		if state.GoalPauseTicks == 0 {
+			setFaceoff(state)
+		}
+		return
+	}
+
 	if state.FaceoffTicks > 0 {
 		state.FaceoffTicks--
 		updateGoalies(state)
@@ -84,6 +93,8 @@ func collectTeamInputs(inputs []InputFrame) (TeamInput, TeamInput) {
 
 func setFaceoff(state *GameState) {
 	state.FaceoffTicks = ticksFromSeconds(FaceoffFreeze)
+	state.GoalPauseTicks = 0
+	state.PuckTrapTicks = 0
 	state.Puck.CarrierID = ""
 	state.Puck.Velocity = Vec2{}
 	state.Puck.Position = Vec2{X: CenterX, Y: CenterY}
@@ -814,7 +825,10 @@ func updatePuck(state *GameState) {
 		state.Puck.Velocity = carrier.Velocity
 		if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
 			awardGoal(state, scoringTeam)
+			return
 		}
+		state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius+1.0)
+		updatePuckTrapState(state, previousPosition)
 		return
 	}
 
@@ -866,11 +880,15 @@ func updatePuck(state *GameState) {
 		return
 	}
 
+	state.Puck.Position, state.Puck.Velocity = keepLoosePuckOutOfGoalTrap(state.Puck.Position, state.Puck.Velocity, state.Puck.Radius+1.0)
+
 	if state.Puck.PickupLockTicks > 0 {
+		updatePuckTrapState(state, previousPosition)
 		return
 	}
 	pickup := findPickupSkater(state)
 	if pickup == nil {
+		updatePuckTrapState(state, previousPosition)
 		return
 	}
 	state.Puck.CarrierID = pickup.ID
@@ -884,7 +902,10 @@ func updatePuck(state *GameState) {
 	state.Puck.Position = pickup.Position.Add(facing.Mul(pickup.Radius + state.Puck.Radius + 3.0))
 	if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
 		awardGoal(state, scoringTeam)
+		return
 	}
+	state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius+1.0)
+	updatePuckTrapState(state, previousPosition)
 }
 
 func findPickupSkater(state *GameState) *SkaterState {
@@ -908,22 +929,50 @@ func findPickupSkater(state *GameState) *SkaterState {
 }
 
 func checkGoalScored(previousPosition, position Vec2) (Team, bool) {
-	if crossedGoalLine(previousPosition, position, false) {
+	if enteredGoalMouth(previousPosition, position, false) {
 		return TeamHome, true
 	}
-	if crossedGoalLine(previousPosition, position, true) {
+	if enteredGoalMouth(previousPosition, position, true) {
 		return TeamAway, true
 	}
 	return TeamNone, false
 }
 
-func crossedGoalLine(previousPosition, position Vec2, leftGoal bool) bool {
+func enteredGoalMouth(previousPosition, position Vec2, leftGoal bool) bool {
 	goalX, _, goalTop, goalBottom, _, _ := goalFrameGeometry(leftGoal)
+	if positionBehindGoalLine(previousPosition, leftGoal, goalX) {
+		return false
+	}
+
+	top, bottom := scoringMouthBounds(goalTop, goalBottom)
+	if crossedGoalPlane(previousPosition, position, goalX, leftGoal) {
+		deltaX := position.X - previousPosition.X
+		progress := (goalX - previousPosition.X) / deltaX
+		crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
+		return crossY >= top && crossY <= bottom
+	}
+
+	if !positionOnGoalFace(position, leftGoal, goalX) {
+		return false
+	}
+	if !positionWithinScoringMouth(position, top, bottom) {
+		return false
+	}
+	if !positionOnGoalFace(previousPosition, leftGoal, goalX) {
+		return true
+	}
+	return !positionWithinScoringMouth(previousPosition, top, bottom)
+}
+
+func scoringMouthBounds(goalTop, goalBottom float64) (float64, float64) {
+	return goalTop - GoalScorePostPad, goalBottom + GoalScorePostPad
+}
+
+func crossedGoalPlane(previousPosition, position Vec2, goalX float64, leftGoal bool) bool {
 	deltaX := position.X - previousPosition.X
 	if math.Abs(deltaX) < 1e-6 {
 		return false
 	}
-
 	if leftGoal {
 		if previousPosition.X < goalX || position.X > goalX {
 			return false
@@ -933,17 +982,30 @@ func crossedGoalLine(previousPosition, position Vec2, leftGoal bool) bool {
 			return false
 		}
 	}
-
 	progress := (goalX - previousPosition.X) / deltaX
-	if progress < 0.0 || progress > 1.0 {
-		return false
-	}
+	return progress >= 0.0 && progress <= 1.0
+}
 
-	crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
-	return crossY >= goalTop+2.0 && crossY <= goalBottom-2.0
+func positionOnGoalFace(position Vec2, leftGoal bool, goalX float64) bool {
+	if leftGoal {
+		return position.X <= goalX+GoalScoreDepthPad
+	}
+	return position.X >= goalX-GoalScoreDepthPad
+}
+
+func positionWithinScoringMouth(position Vec2, top, bottom float64) bool {
+	return position.Y >= top && position.Y <= bottom
+}
+
+func positionBehindGoalLine(position Vec2, leftGoal bool, goalX float64) bool {
+	if leftGoal {
+		return position.X < goalX
+	}
+	return position.X > goalX
 }
 
 func awardGoal(state *GameState, team Team) {
+	state.PuckTrapTicks = 0
 	if state.Puck.ShotActive && state.Puck.ShotTeam == team {
 		registerShotOnGoalIfNeeded(state, team)
 	}
@@ -964,7 +1026,8 @@ func awardGoal(state *GameState, team Team) {
 		}
 		return
 	}
-	setFaceoff(state)
+	state.GoalPauseTicks = ticksFromSeconds(goalPauseSecondsForColor(teamColorForTeam(state, team)))
+	state.Puck.Velocity = Vec2{}
 }
 
 func updateClock(state *GameState) {
@@ -1076,6 +1139,52 @@ func containPuckToRink(position, velocity Vec2, radius float64) (Vec2, Vec2) {
 	return position, velocity
 }
 
+func updatePuckTrapState(state *GameState, previousPosition Vec2) {
+	if state == nil || state.Puck.CarrierID != "" {
+		if state != nil {
+			state.PuckTrapTicks = 0
+		}
+		return
+	}
+
+	movement := state.Puck.Position.Sub(previousPosition).Length()
+	if puckInGoalTrapZone(state.Puck.Position, state.Puck.Radius+1.0) && movement <= 1.2 && state.Puck.Velocity.Length() <= 48.0 {
+		state.PuckTrapTicks++
+		if state.PuckTrapTicks >= ticksFromSeconds(GoalTrapFaceoff) {
+			setFaceoff(state)
+		}
+		return
+	}
+
+	state.PuckTrapTicks = 0
+}
+
+func keepLoosePuckOutOfGoalTrap(position, velocity Vec2, radius float64) (Vec2, Vec2) {
+	position, normal, hit := pushCircleOutOfGoalFrames(position, radius, true)
+	position, interiorNormal, interiorHit := pushCircleOutOfGoalInterior(position, radius)
+	if interiorHit {
+		if hit {
+			normal = normal.Add(interiorNormal).Normalized()
+		} else {
+			normal = interiorNormal
+		}
+		hit = true
+	}
+	if hit {
+		dot := velocity.Dot(normal)
+		if dot < 0.0 {
+			velocity = velocity.Sub(normal.Mul(1.9 * dot)).Mul(0.86)
+		}
+	}
+	return position, velocity
+}
+
+func keepCarriedPuckOutOfGoalTrap(position Vec2, radius float64) Vec2 {
+	position, _, _ = pushCircleOutOfGoalFrames(position, radius, true)
+	position, _, _ = pushCircleOutOfGoalInterior(position, radius)
+	return position
+}
+
 func pushCircleOutOfGoalFrames(position Vec2, radius float64, includeFront bool) (Vec2, Vec2, bool) {
 	result := position
 	combinedNormal := Vec2{}
@@ -1091,6 +1200,90 @@ func pushCircleOutOfGoalFrames(position Vec2, radius float64, includeFront bool)
 		}
 	}
 	return result, combinedNormal.Normalized(), hit
+}
+
+func pushCircleOutOfGoalInterior(position Vec2, radius float64) (Vec2, Vec2, bool) {
+	result := position
+	combinedNormal := Vec2{}
+	hit := false
+	for _, leftGoal := range []bool{true, false} {
+		if !pointInsideGoal(result, leftGoal) {
+			continue
+		}
+
+		bestDistance := math.Inf(1)
+		bestPoint := Vec2{}
+		bestNormal := Vec2{}
+		for _, segment := range goalFrameSegments(leftGoal, true) {
+			closest := closestPointOnSegment(result, segment.Start, segment.End)
+			normal := closest.Sub(result).Normalized()
+			if normal.Length() < 1e-6 {
+				normal = outwardGoalSegmentNormal(segment.Start, segment.End, leftGoal)
+			}
+			distance := result.Sub(closest).Length()
+			if distance < bestDistance {
+				bestDistance = distance
+				bestPoint = closest
+				bestNormal = normal
+			}
+		}
+
+		if bestNormal.Length() < 1e-6 {
+			continue
+		}
+		result = bestPoint.Add(bestNormal.Mul(radius + 4.0))
+		combinedNormal = combinedNormal.Add(bestNormal)
+		hit = true
+	}
+	return result, combinedNormal.Normalized(), hit
+}
+
+func closestPointOnSegment(position, start, end Vec2) Vec2 {
+	segment := end.Sub(start)
+	lengthSquared := segment.Dot(segment)
+	if lengthSquared < 1e-6 {
+		return start
+	}
+	t := clamp(position.Sub(start).Dot(segment)/lengthSquared, 0.0, 1.0)
+	return start.Add(segment.Mul(t))
+}
+
+func outwardGoalSegmentNormal(start, end Vec2, leftGoal bool) Vec2 {
+	candidate := Vec2{X: -(end.Y - start.Y), Y: end.X - start.X}.Normalized()
+	if candidate.Length() < 1e-6 {
+		if leftGoal {
+			return Vec2{X: -1.0}
+		}
+		return Vec2{X: 1.0}
+	}
+	midpoint := start.Add(end).Mul(0.5)
+	outside := midpoint.Add(candidate.Mul(6.0))
+	if !pointInsideGoal(outside, leftGoal) {
+		return candidate
+	}
+	return candidate.Mul(-1.0)
+}
+
+func puckInGoalTrapZone(position Vec2, radius float64) bool {
+	for _, leftGoal := range []bool{true, false} {
+		goalX, backX, goalTop, goalBottom, _, _ := goalFrameGeometry(leftGoal)
+		minX := math.Min(goalX, backX) - radius - 18.0
+		maxX := math.Max(goalX, backX) + radius + 18.0
+		minY := goalTop - radius - 12.0
+		maxY := goalBottom + radius + 12.0
+		if position.X < minX || position.X > maxX || position.Y < minY || position.Y > maxY {
+			continue
+		}
+		if pointInsideGoal(position, leftGoal) {
+			return true
+		}
+		for _, segment := range goalFrameSegments(leftGoal, false) {
+			if distanceToSegment(position, segment.Start, segment.End) <= radius+10.0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func pushCircleFromSegment(position Vec2, radius float64, start, end Vec2, segmentRadius float64) (Vec2, Vec2, bool) {

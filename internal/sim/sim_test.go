@@ -102,8 +102,57 @@ func TestCrossingGoalLineScores(t *testing.T) {
 	if state.Score.Home != 1 {
 		t.Fatalf("expected home score 1, got %+v", state.Score)
 	}
-	if state.FaceoffTicks == 0 {
-		t.Fatalf("expected faceoff reset after goal")
+	if state.GoalPauseTicks <= 0 {
+		t.Fatalf("expected a short goal pause before the faceoff, got %d", state.GoalPauseTicks)
+	}
+	pauseTicks := state.GoalPauseTicks
+	for step := 0; step < pauseTicks; step++ {
+		Step(&state, nil)
+	}
+	if state.FaceoffTicks <= 0 {
+		t.Fatalf("expected faceoff reset after the goal pause")
+	}
+}
+func TestGoalPauseUsesScoringTeamColorDuration(t *testing.T) {
+	tests := []struct {
+		name      string
+		homeColor TeamColor
+		awayColor TeamColor
+		position  Vec2
+		velocity  Vec2
+		want      int
+	}{
+		{
+			name:      "home orange goal uses orange horn length",
+			homeColor: TeamColorOrange,
+			awayColor: TeamColorBlue,
+			position:  Vec2{X: AwayGoalLineX - 6, Y: CenterY},
+			velocity:  Vec2{X: 900, Y: 0},
+			want:      ticksFromSeconds(GoalPauseOrangeSeconds),
+		},
+		{
+			name:      "away red goal uses red horn length",
+			homeColor: TeamColorGreen,
+			awayColor: TeamColorRed,
+			position:  Vec2{X: HomeGoalLineX + 6, Y: CenterY},
+			velocity:  Vec2{X: -900, Y: 0},
+			want:      ticksFromSeconds(GoalPauseRedSeconds),
+		},
+	}
+
+	for _, tc := range tests {
+		state := NewGameState()
+		state.FaceoffTicks = 0
+		state.HomeColor = tc.homeColor
+		state.AwayColor = tc.awayColor
+		state.Puck.Position = tc.position
+		state.Puck.Velocity = tc.velocity
+
+		Step(&state, nil)
+
+		if state.GoalPauseTicks != tc.want {
+			t.Fatalf("%s: expected goal pause %d, got %d", tc.name, tc.want, state.GoalPauseTicks)
+		}
 	}
 }
 
@@ -181,11 +230,87 @@ func TestPuckEnteringNetFromBehindDoesNotScore(t *testing.T) {
 			previous: Vec2{X: HomeGoalLineX - GoalDepth - 6, Y: CenterY},
 			current:  Vec2{X: HomeGoalLineX - GoalDepth + 6, Y: CenterY},
 		},
+		{
+			name:     "right goal vertical from behind",
+			previous: Vec2{X: AwayGoalLineX + GoalDepth + 6, Y: CenterY - GoalHalfHeight - 14},
+			current:  Vec2{X: AwayGoalLineX + GoalDepth + 6, Y: CenterY},
+		},
+		{
+			name:     "left goal vertical from behind",
+			previous: Vec2{X: HomeGoalLineX - GoalDepth - 6, Y: CenterY - GoalHalfHeight - 14},
+			current:  Vec2{X: HomeGoalLineX - GoalDepth - 6, Y: CenterY},
+		},
 	}
 
 	for _, tc := range tests {
 		if scoringTeam, scored := checkGoalScored(tc.previous, tc.current); scored {
 			t.Fatalf("%s: expected no goal from behind the net, got %q", tc.name, scoringTeam)
+		}
+	}
+}
+
+func TestPuckEnteringGoalMouthFromFrontScores(t *testing.T) {
+	tests := []struct {
+		name     string
+		previous Vec2
+		current  Vec2
+		team     Team
+	}{
+		{
+			name:     "right goal vertical entry",
+			previous: Vec2{X: AwayGoalLineX, Y: CenterY - GoalHalfHeight - 14},
+			current:  Vec2{X: AwayGoalLineX, Y: CenterY},
+			team:     TeamHome,
+		},
+		{
+			name:     "left goal vertical entry",
+			previous: Vec2{X: HomeGoalLineX, Y: CenterY - GoalHalfHeight - 14},
+			current:  Vec2{X: HomeGoalLineX, Y: CenterY},
+			team:     TeamAway,
+		},
+		{
+			name:     "right goal near top post",
+			previous: Vec2{X: AwayGoalLineX - 18, Y: CenterY - GoalHalfHeight - 16},
+			current:  Vec2{X: AwayGoalLineX - 3, Y: CenterY - GoalHalfHeight - 4},
+			team:     TeamHome,
+		},
+		{
+			name:     "left goal near bottom post",
+			previous: Vec2{X: HomeGoalLineX + 18, Y: CenterY + GoalHalfHeight + 16},
+			current:  Vec2{X: HomeGoalLineX + 3, Y: CenterY + GoalHalfHeight + 4},
+			team:     TeamAway,
+		},
+	}
+
+	for _, tc := range tests {
+		scoringTeam, scored := checkGoalScored(tc.previous, tc.current)
+		if !scored || scoringTeam != tc.team {
+			t.Fatalf("%s: expected %q to score, got scored=%v team=%q", tc.name, tc.team, scored, scoringTeam)
+		}
+	}
+}
+
+func TestPuckOutsidePostsStillDoesNotScore(t *testing.T) {
+	tests := []struct {
+		name     string
+		previous Vec2
+		current  Vec2
+	}{
+		{
+			name:     "right goal above post",
+			previous: Vec2{X: AwayGoalLineX - 18, Y: CenterY - GoalHalfHeight - 24},
+			current:  Vec2{X: AwayGoalLineX - 3, Y: CenterY - GoalHalfHeight - 18},
+		},
+		{
+			name:     "left goal below post",
+			previous: Vec2{X: HomeGoalLineX + 18, Y: CenterY + GoalHalfHeight + 24},
+			current:  Vec2{X: HomeGoalLineX + 3, Y: CenterY + GoalHalfHeight + 18},
+		},
+	}
+
+	for _, tc := range tests {
+		if scoringTeam, scored := checkGoalScored(tc.previous, tc.current); scored {
+			t.Fatalf("%s: expected no goal outside the posts, got %q", tc.name, scoringTeam)
 		}
 	}
 }
@@ -240,8 +365,54 @@ func TestLoosePuckPickedUpAcrossGoalLineScores(t *testing.T) {
 	if state.Score.Home != 1 {
 		t.Fatalf("expected loose puck pickup at the goal mouth to score, got %+v", state.Score)
 	}
-	if state.FaceoffTicks == 0 {
-		t.Fatalf("expected faceoff reset after pickup goal")
+	if state.GoalPauseTicks <= 0 {
+		t.Fatalf("expected a short goal pause after pickup scoring, got %d", state.GoalPauseTicks)
+	}
+}
+
+func TestCarriedPuckBehindNetStaysOutOfGoalPocket(t *testing.T) {
+	state := NewGameState()
+	state.FaceoffTicks = 0
+	state.HomeControlled = 1
+	carrier := &state.HomeSkaters[state.HomeControlled]
+	carrier.Position = Vec2{X: AwayGoalLineX + GoalDepth + 18, Y: CenterY}
+	carrier.LookDir = Vec2{X: -1, Y: 0}
+	state.Puck.CarrierID = carrier.ID
+	state.Puck.Position = carrier.Position
+
+	Step(&state, []InputFrame{{Team: TeamHome}})
+
+	if pointInsideGoal(state.Puck.Position, false) {
+		t.Fatalf("expected carried puck to be pushed out of the right goal pocket, got %#v", state.Puck.Position)
+	}
+	if state.Score.Home != 0 {
+		t.Fatalf("expected no goal from a behind-net carry, got %+v", state.Score)
+	}
+}
+
+func TestLoosePuckTrappedBehindNetForcesFaceoffAfterThreeSeconds(t *testing.T) {
+	state := NewGameState()
+	state.FaceoffTicks = 0
+	state.Puck.Position = Vec2{X: AwayGoalLineX + GoalDepth + state.Puck.Radius + 2.0, Y: CenterY}
+	state.Puck.Velocity = Vec2{}
+	state.Puck.PickupLockTeam = TeamHome
+	state.Puck.PickupLockTicks = ticksFromSeconds(GoalTrapFaceoff) + 5
+	for index := range state.HomeSkaters {
+		state.HomeSkaters[index].Position = Vec2{X: CenterX - 220, Y: CenterY - 120 + float64(index)*120.0}
+	}
+	for index := range state.AwaySkaters {
+		state.AwaySkaters[index].Position = Vec2{X: CenterX + 120, Y: CenterY - 120 + float64(index)*120.0}
+	}
+
+	for step := 0; step <= ticksFromSeconds(GoalTrapFaceoff); step++ {
+		Step(&state, nil)
+	}
+
+	if state.FaceoffTicks <= 0 {
+		t.Fatalf("expected a stuck puck behind the net to trigger a faceoff, got %+v", state)
+	}
+	if state.Puck.Position != (Vec2{X: CenterX, Y: CenterY}) {
+		t.Fatalf("expected stuck-puck faceoff to reset the puck to center, got %#v", state.Puck.Position)
 	}
 }
 

@@ -26,10 +26,16 @@ const (
 )
 
 const (
-	RegulationPeriods   = 3
-	PeriodLengthSeconds = 120.0
-	OTLengthSeconds     = 60.0
-	FaceoffFreeze       = 2.4
+	RegulationPeriods      = 3
+	PeriodLengthSeconds    = 120.0
+	OTLengthSeconds        = 60.0
+	FaceoffFreeze          = 2.4
+	GoalPauseDefault       = 8.1
+	GoalPauseBlackSeconds  = 7.8
+	GoalPauseOrangeSeconds = 8.1
+	GoalPauseGreenSeconds  = 7.1
+	GoalPauseBlueSeconds   = 6.85
+	GoalPauseRedSeconds    = 5.35
 )
 
 const (
@@ -38,6 +44,9 @@ const (
 	AIShotSpeed       = PlayerPassSpeed * 1.85
 	GoalieReachBuffer = 28.0
 	ShotTargetMargin  = 10.0
+	GoalTrapFaceoff   = 3.0
+	GoalScoreDepthPad = 7.0
+	GoalScorePostPad  = 8.0
 )
 
 type TeamTuning struct {
