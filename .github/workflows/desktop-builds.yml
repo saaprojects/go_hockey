@@ -40,8 +40,8 @@ jobs:
           prerelease: false
           overwrite_files: true
 
-  build-windows:
-    name: Windows EXE
+  build-for-windows:
+    name: Windows Executable
     needs: prepare-release
     runs-on: windows-latest
 
@@ -55,6 +55,7 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
+        shell: pwsh
         run: go test ./...
 
       - name: Build Windows executable
@@ -72,8 +73,8 @@ jobs:
           fail_on_unmatched_files: true
           overwrite_files: true
 
-  build-macos:
-    name: macOS App (arm64)
+  build-for-macos:
+    name: MacOS App (Apple Silicon)
     needs: prepare-release
     runs-on: macos-14
 
@@ -87,19 +88,26 @@ jobs:
           go-version-file: go.mod
 
       - name: Run tests
+        shell: bash
         run: go test ./...
 
       - name: Build macOS app bundle
         shell: bash
         env:
-          GOOS: darwin
-          GOARCH: arm64
-          CGO_ENABLED: '1'
+          CGO_ENABLED: "1"
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.tag }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          APP_DIR="dist/GoHockey.app"
-          mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-          cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
+
+          APP_NAME="GoHockey"
+          APP_DIR="dist/${APP_NAME}.app"
+          BIN_PATH="${APP_DIR}/Contents/MacOS/${APP_NAME}"
+          PLIST_PATH="${APP_DIR}/Contents/Info.plist"
+
+          mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+
+          cat > "${PLIST_PATH}" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -107,19 +115,21 @@ jobs:
             <key>CFBundleDevelopmentRegion</key>
             <string>en</string>
             <key>CFBundleExecutable</key>
-            <string>GoHockey</string>
+            <string>${APP_NAME}</string>
             <key>CFBundleIdentifier</key>
             <string>com.gohockey.app</string>
             <key>CFBundleInfoDictionaryVersion</key>
             <string>6.0</string>
             <key>CFBundleName</key>
             <string>Go Hockey</string>
+            <key>CFBundleDisplayName</key>
+            <string>Go Hockey</string>
             <key>CFBundlePackageType</key>
             <string>APPL</string>
             <key>CFBundleShortVersionString</key>
-            <string>0.1.0</string>
+            <string>${RELEASE_TAG}</string>
             <key>CFBundleVersion</key>
-            <string>1</string>
+            <string>${BUILD_NUMBER}</string>
             <key>LSMinimumSystemVersion</key>
             <string>12.0</string>
             <key>NSHighResolutionCapable</key>
@@ -127,10 +137,54 @@ jobs:
           </dict>
           </plist>
           PLIST
-          echo "APPL????" > "$APP_DIR/Contents/PkgInfo"
-          go build -trimpath -ldflags="-s -w" -o "$APP_DIR/Contents/MacOS/GoHockey" ./hockey-v2
-          chmod +x "$APP_DIR/Contents/MacOS/GoHockey"
-          ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "dist/GoHockey-macos-${GOARCH}.zip"
+
+          printf "APPL????" > "${APP_DIR}/Contents/PkgInfo"
+
+          go build -trimpath -ldflags="-s -w" -o "${BIN_PATH}" ./hockey-v2
+          chmod +x "${BIN_PATH}"
+
+      - name: Validate macOS bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_DIR="dist/GoHockey.app"
+          BIN_PATH="${APP_DIR}/Contents/MacOS/GoHockey"
+          PLIST_PATH="${APP_DIR}/Contents/Info.plist"
+
+          echo "== file =="
+          file "${BIN_PATH}"
+
+          echo "== lipo -info =="
+          lipo -info "${BIN_PATH}" || true
+
+          echo "== plist validation =="
+          plutil -lint "${PLIST_PATH}"
+
+      - name: Ad-hoc sign app for testing
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_DIR="dist/GoHockey.app"
+
+          codesign --force --deep --sign - "${APP_DIR}"
+
+      - name: Verify code signature
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_DIR="dist/GoHockey.app"
+
+          codesign --verify --deep --strict --verbose=2 "${APP_DIR}"
+          spctl --assess --type execute --verbose=4 "${APP_DIR}" || true
+
+      - name: Package macOS app
+        shell: bash
+        run: |
+          set -euo pipefail
+          ditto -c -k --sequesterRsrc --keepParent "dist/GoHockey.app" "dist/GoHockey-macos-arm64.zip"
 
       - name: Upload macOS asset to release
         uses: softprops/action-gh-release@v2

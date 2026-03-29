@@ -797,6 +797,7 @@ func updateGoalies(state *GameState) {
 }
 
 func updatePuck(state *GameState) {
+	previousPosition := state.Puck.Position
 	if carrier, ok := findSkaterByID(state, state.Puck.CarrierID); ok {
 		facing := carrier.LookDir.Normalized()
 		if facing.Length() < 0.2 {
@@ -804,7 +805,7 @@ func updatePuck(state *GameState) {
 		}
 		state.Puck.Position = carrier.Position.Add(facing.Mul(carrier.Radius + state.Puck.Radius + 3.0))
 		state.Puck.Velocity = carrier.Velocity
-		if scoringTeam, scored := checkGoalScored(state.Puck.Position); scored {
+		if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
 			awardGoal(state, scoringTeam)
 		}
 		return
@@ -813,7 +814,7 @@ func updatePuck(state *GameState) {
 	state.Puck.Position = state.Puck.Position.Add(state.Puck.Velocity.Mul(TickSeconds))
 	state.Puck.Velocity = state.Puck.Velocity.Mul(0.992)
 
-	if scoringTeam, scored := checkGoalScored(state.Puck.Position); scored {
+	if scoringTeam, scored := checkGoalScored(previousPosition, state.Puck.Position); scored {
 		awardGoal(state, scoringTeam)
 		return
 	}
@@ -891,14 +892,40 @@ func findPickupSkater(state *GameState) *SkaterState {
 	return best
 }
 
-func checkGoalScored(position Vec2) (Team, bool) {
-	if pointInsideGoal(position, false) {
+func checkGoalScored(previousPosition, position Vec2) (Team, bool) {
+	if crossedGoalLine(previousPosition, position, false) {
 		return TeamHome, true
 	}
-	if pointInsideGoal(position, true) {
+	if crossedGoalLine(previousPosition, position, true) {
 		return TeamAway, true
 	}
 	return TeamNone, false
+}
+
+func crossedGoalLine(previousPosition, position Vec2, leftGoal bool) bool {
+	goalX, _, goalTop, goalBottom, _, _ := goalFrameGeometry(leftGoal)
+	deltaX := position.X - previousPosition.X
+	if math.Abs(deltaX) < 1e-6 {
+		return false
+	}
+
+	if leftGoal {
+		if previousPosition.X < goalX || position.X > goalX {
+			return false
+		}
+	} else {
+		if previousPosition.X > goalX || position.X < goalX {
+			return false
+		}
+	}
+
+	progress := (goalX - previousPosition.X) / deltaX
+	if progress < 0.0 || progress > 1.0 {
+		return false
+	}
+
+	crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
+	return crossY >= goalTop+2.0 && crossY <= goalBottom-2.0
 }
 
 func awardGoal(state *GameState, team Team) {

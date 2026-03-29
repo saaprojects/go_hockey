@@ -162,10 +162,60 @@ func TestAIPassPrefersOpenReceiver(t *testing.T) {
 	}
 }
 
-func TestPuckBehindNetDoesNotScore(t *testing.T) {
-	position := Vec2{X: AwayGoalLineX + GoalDepth + 6, Y: CenterY}
-	if scoringTeam, scored := checkGoalScored(position); scored {
-		t.Fatalf("expected no goal behind the net, got %q", scoringTeam)
+func TestPuckEnteringNetFromBehindDoesNotScore(t *testing.T) {
+	tests := []struct {
+		name     string
+		previous Vec2
+		current  Vec2
+	}{
+		{
+			name:     "right goal",
+			previous: Vec2{X: AwayGoalLineX + GoalDepth + 6, Y: CenterY},
+			current:  Vec2{X: AwayGoalLineX + GoalDepth - 6, Y: CenterY},
+		},
+		{
+			name:     "left goal",
+			previous: Vec2{X: HomeGoalLineX - GoalDepth - 6, Y: CenterY},
+			current:  Vec2{X: HomeGoalLineX - GoalDepth + 6, Y: CenterY},
+		},
+	}
+
+	for _, tc := range tests {
+		if scoringTeam, scored := checkGoalScored(tc.previous, tc.current); scored {
+			t.Fatalf("%s: expected no goal from behind the net, got %q", tc.name, scoringTeam)
+		}
+	}
+}
+
+func TestCarriedPuckBehindNetDoesNotScore(t *testing.T) {
+	state := NewGameState()
+	state.FaceoffTicks = 0
+	state.HomeControlled = 1
+	carrier := &state.HomeSkaters[state.HomeControlled]
+	carrier.Position = Vec2{X: AwayGoalLineX + GoalDepth + 14, Y: CenterY}
+	carrier.LookDir = Vec2{X: -1, Y: 0}
+	state.Puck.CarrierID = carrier.ID
+	state.Puck.Position = Vec2{X: AwayGoalLineX + GoalDepth + 10, Y: CenterY}
+
+	Step(&state, []InputFrame{{Team: TeamHome}})
+
+	if state.Score.Home != 0 {
+		t.Fatalf("expected no home goal from behind the net, got %+v", state.Score)
+	}
+
+	state = NewGameState()
+	state.FaceoffTicks = 0
+	state.AwayControlled = 1
+	carrier = &state.AwaySkaters[state.AwayControlled]
+	carrier.Position = Vec2{X: HomeGoalLineX - GoalDepth - 14, Y: CenterY}
+	carrier.LookDir = Vec2{X: 1, Y: 0}
+	state.Puck.CarrierID = carrier.ID
+	state.Puck.Position = Vec2{X: HomeGoalLineX - GoalDepth - 10, Y: CenterY}
+
+	Step(&state, []InputFrame{{Team: TeamAway}})
+
+	if state.Score.Away != 0 {
+		t.Fatalf("expected no away goal from behind the net, got %+v", state.Score)
 	}
 }
 
