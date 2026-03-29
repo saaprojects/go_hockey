@@ -2,7 +2,7 @@
 
 ## Current layout
 
-- `cmd/hockey-v2`: executable entrypoint
+- `hockey-v2`: executable entrypoint
 - `internal/client`: solo and online Ebitengine clients
 - `internal/sim`: gameplay state and fixed-tick simulation core
 - `internal/netcode`: network message shapes and TCP client
@@ -11,10 +11,16 @@
 ## Launcher
 
 ```powershell
-go run ./cmd/hockey-v2
+go run ./hockey-v2
 ```
 
 This opens the same Ebitengine client launcher for every mode.
+
+If you `cd hockey-v2` first, use:
+
+```powershell
+go run .
+```
 
 From that menu you can choose:
 
@@ -48,13 +54,13 @@ The menu is the default entry point, but the direct commands still work if you w
 Start a local server and immediately join it with one client:
 
 ```powershell
-go run ./cmd/hockey-v2 -host
+go run ./hockey-v2 -host
 ```
 
 Then open a second terminal for the other player:
 
 ```powershell
-go run ./cmd/hockey-v2 -join <your local IP>:4242
+go run ./hockey-v2 -join <your local IP>:4242
 ```
 
 The first player to join gets `home`. The second gets `away`.
@@ -91,13 +97,13 @@ The two teams cannot lock in the same color.
 Run only the authoritative match server:
 
 ```powershell
-go run ./cmd/hockey-v2 -server -listen :4242
+go run ./hockey-v2 -server -listen :4242
 ```
 
 Join from another machine or terminal:
 
 ```powershell
-go run ./cmd/hockey-v2 -join YOUR_HOST_OR_IP:4242
+go run ./hockey-v2 -join YOUR_HOST_OR_IP:4242
 ```
 
 ## Online client controls
@@ -119,7 +125,7 @@ Notes:
 ## Headless smoke test
 
 ```powershell
-go run ./cmd/hockey-v2 -headless
+go run ./hockey-v2 -headless
 ```
 
 ## Rewrite direction
