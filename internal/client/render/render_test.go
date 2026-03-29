@@ -41,16 +41,21 @@ func TestPaletteAndTeamColorLabels(t *testing.T) {
 	}
 }
 
-func TestLauncherAndReadyOverlayRects(t *testing.T) {
-	footer := LauncherFooterRect()
-	if footer.W <= 0 || footer.H <= 0 {
-		t.Fatalf("unexpected launcher footer rect %+v", footer)
+func TestLauncherSetupAndReadyOverlayRects(t *testing.T) {
+	panel := LaunchSetupPanelRect()
+	if panel.W <= 0 || panel.H <= 0 {
+		t.Fatalf("unexpected launch setup panel rect %+v", panel)
 	}
-	if prev := LauncherSoloColorPrevRect(); prev.X < footer.X || prev.Y < footer.Y {
-		t.Fatalf("expected prev button inside footer, got %+v footer=%+v", prev, footer)
+	firstChip := LaunchSetupColorChipRect(0)
+	lastChip := LaunchSetupColorChipRect(4)
+	if firstChip.X < panel.X || firstChip.Y < panel.Y {
+		t.Fatalf("expected first color chip inside setup panel, got %+v panel=%+v", firstChip, panel)
 	}
-	if next := LauncherSoloColorNextRect(); next.X <= LauncherSoloColorLabelRect().X {
-		t.Fatalf("expected next button to appear after label, got %+v", next)
+	if lastChip.X+lastChip.W > panel.X+panel.W {
+		t.Fatalf("expected last color chip inside setup panel, got %+v panel=%+v", lastChip, panel)
+	}
+	if confirm := LaunchSetupConfirmRect(); confirm.X <= LaunchSetupBackRect().X {
+		t.Fatalf("expected confirm button to appear after back button, got %+v", confirm)
 	}
 
 	card0 := MenuOptionRect(0)
@@ -103,9 +108,11 @@ func TestRenderDrawFunctionsSmoke(t *testing.T) {
 	multiplayer.LastIntermissionStats = sim.PeriodStats{Period: 1, Home: sim.TeamPeriodStats{ShotsOnGoal: 5, Goals: 2}, Away: sim.TeamPeriodStats{ShotsOnGoal: 3, Goals: 1}}
 	DrawReadyOverlay(screen, multiplayer, sim.TeamAway, "Intermission")
 
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 0, SoloColor: sim.TeamColorBlue, Status: "Ready", RoomCount: 2})
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 1, SoloColor: sim.TeamColorBlue, Status: "Hosting", RoomCount: 0})
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 2, SoloColor: sim.TeamColorBlue, Status: "Browsing", RoomCount: 3})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 0, Status: "Ready", RoomCount: 2})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 1, Status: "Hosting", RoomCount: 0})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 2, Status: "Browsing", RoomCount: 3})
+	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Solo Game Setup", Description: "Pick your team color.", ConfirmLabel: "Start Solo Game", Color: sim.TeamColorBlue})
+	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Host Multiplayer Setup", Description: "Pick your team color.", ConfirmLabel: "Host LAN Game", Color: sim.TeamColorRed, Status: "Unable to advertise local room"})
 
 	DrawJoinBrowser(screen, JoinBrowserModel{Status: "Searching"})
 	DrawJoinBrowser(screen, JoinBrowserModel{

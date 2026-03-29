@@ -18,9 +18,15 @@ type matchMenuState struct {
 	Selected int
 }
 
+type launchSetupState struct {
+	Active bool
+	Mode   menuOption
+	Color  sim.TeamColor
+}
+
 type launchMenu struct {
 	Selected   menuOption
-	SoloColor  sim.TeamColor
+	Color      sim.TeamColor
 	Status     string
 	Rooms      []discovery.Room
 	RoomCursor int
@@ -89,12 +95,24 @@ func nextLauncherColor(current sim.TeamColor, delta int) sim.TeamColor {
 	return launcherColorCycle[nextIndex]
 }
 
-func awayColorForSolo(home sim.TeamColor) sim.TeamColor {
+func opponentColorForSelection(home sim.TeamColor) sim.TeamColor {
 	away := nextLauncherColor(home, 1)
 	if away == home {
 		return sim.TeamColorRed
 	}
 	return away
+}
+
+func (s *launchSetupState) Open(mode menuOption, color sim.TeamColor) {
+	s.Active = true
+	s.Mode = mode
+	s.Color = color
+}
+
+func (s *launchSetupState) Close() {
+	s.Active = false
+	s.Mode = menuOptionSolo
+	s.Color = ""
 }
 
 func roomKey(room discovery.Room) string {

@@ -42,6 +42,18 @@ func TestMatchMenuStateLifecycle(t *testing.T) {
 	}
 }
 
+func TestLaunchSetupStateLifecycle(t *testing.T) {
+	setup := launchSetupState{}
+	setup.Open(menuOptionHost, sim.TeamColorOrange)
+	if !setup.Active || setup.Mode != menuOptionHost || setup.Color != sim.TeamColorOrange {
+		t.Fatalf("unexpected setup state after open: %+v", setup)
+	}
+	setup.Close()
+	if setup.Active || setup.Mode != menuOptionSolo || setup.Color != "" {
+		t.Fatalf("unexpected setup state after close: %+v", setup)
+	}
+}
+
 func TestNextLauncherColorWraps(t *testing.T) {
 	if got := nextLauncherColor(sim.TeamColorBlue, 1); got != sim.TeamColorRed {
 		t.Fatalf("expected blue -> red, got %q", got)
@@ -54,10 +66,10 @@ func TestNextLauncherColorWraps(t *testing.T) {
 	}
 }
 
-func TestAwayColorForSoloUsesDifferentColor(t *testing.T) {
+func TestOpponentColorForSelectionUsesDifferentColor(t *testing.T) {
 	for _, color := range launcherColorCycle {
-		if got := awayColorForSolo(color); got == color {
-			t.Fatalf("expected away color different from %q", color)
+		if got := opponentColorForSelection(color); got == color {
+			t.Fatalf("expected opponent color different from %q", color)
 		}
 	}
 }
@@ -118,10 +130,10 @@ func TestJoinRoomStatusGuards(t *testing.T) {
 }
 
 func TestReturnToMenuResetsLauncherState(t *testing.T) {
-	app := &App{screen: appScreenRemote, remote: &RemoteGame{}, solo: NewSoloGame()}
+	app := &App{screen: appScreenRemote, remote: &RemoteGame{}, solo: NewSoloGame(), setup: launchSetupState{Active: true, Mode: menuOptionHost, Color: sim.TeamColorRed}}
 	app.returnToMenu("Ready")
-	if app.screen != appScreenMenu || app.remote != nil || app.solo != nil {
-		t.Fatalf("expected return to launcher state, got screen=%v remote=%v solo=%v", app.screen, app.remote, app.solo)
+	if app.screen != appScreenMenu || app.remote != nil || app.solo != nil || app.setup.Active {
+		t.Fatalf("expected return to launcher state, got screen=%v remote=%v solo=%v setup=%+v", app.screen, app.remote, app.solo, app.setup)
 	}
 	if app.menu.Status != "Ready" {
 		t.Fatalf("unexpected status %q", app.menu.Status)
@@ -149,15 +161,32 @@ func TestReturnToRoomMenuUsesBrowserAvailability(t *testing.T) {
 }
 
 func TestActivateMenuOptionTransitions(t *testing.T) {
-	app := &App{menu: launchMenu{SoloColor: sim.TeamColorGreen}}
+	app := &App{menu: launchMenu{Color: sim.TeamColorGreen}}
 	if err := app.activateMenuOption(menuOptionSolo); err != nil {
 		t.Fatalf("activate solo: %v", err)
 	}
-	if app.screen != appScreenSolo || app.solo == nil {
-		t.Fatalf("expected solo game to start, got screen=%v solo=%v", app.screen, app.solo)
+	if app.screen != appScreenMenu || app.solo != nil || !app.setup.Active || app.setup.Mode != menuOptionSolo {
+		t.Fatalf("expected solo setup modal, got screen=%v solo=%v setup=%+v", app.screen, app.solo, app.setup)
+	}
+	if app.setup.Color != sim.TeamColorGreen {
+		t.Fatalf("expected setup color to mirror launcher color, got %q", app.setup.Color)
+	}
+	if err := app.confirmLaunchSetup(); err != nil {
+		t.Fatalf("confirm solo setup: %v", err)
+	}
+	if app.screen != appScreenSolo || app.solo == nil || app.setup.Active {
+		t.Fatalf("expected solo game to start, got screen=%v solo=%v setup=%+v", app.screen, app.solo, app.setup)
 	}
 	if app.solo.state.HomeColor != sim.TeamColorGreen || app.solo.state.AwayColor == sim.TeamColorGreen {
 		t.Fatalf("unexpected solo game colors: home=%q away=%q", app.solo.state.HomeColor, app.solo.state.AwayColor)
+	}
+
+	app = &App{menu: launchMenu{Color: sim.TeamColorOrange}}
+	if err := app.activateMenuOption(menuOptionHost); err != nil {
+		t.Fatalf("activate host: %v", err)
+	}
+	if app.screen != appScreenMenu || !app.setup.Active || app.setup.Mode != menuOptionHost || app.setup.Color != sim.TeamColorOrange {
+		t.Fatalf("expected host setup modal, got screen=%v setup=%+v", app.screen, app.setup)
 	}
 
 	app = &App{}

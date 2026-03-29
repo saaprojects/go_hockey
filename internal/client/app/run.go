@@ -37,7 +37,7 @@ func RunRemote(addr string) error {
 }
 
 func RunHosted(listenAddr string) error {
-	srv, serveErr, advertiser, game, err := startHostedSession(listenAddr)
+	srv, serveErr, advertiser, game, err := startHostedSession(listenAddr, sim.TeamColorBlue)
 	if err != nil {
 		return err
 	}

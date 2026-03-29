@@ -17,6 +17,7 @@ import (
 type App struct {
 	screen         appScreen
 	menu           launchMenu
+	setup          launchSetupState
 	solo           *SoloGame
 	remote         *RemoteGame
 	hostServer     *server.Server
@@ -29,8 +30,8 @@ func NewApp() *App {
 	app := &App{
 		screen: appScreenMenu,
 		menu: launchMenu{
-			Selected:  menuOptionSolo,
-			SoloColor: sim.TeamColorBlue,
+			Selected: menuOptionSolo,
+			Color:    sim.TeamColorBlue,
 		},
 	}
 	browser, err := discovery.NewBrowser()
@@ -105,8 +106,27 @@ func (a *App) Draw(screen *ebiten.Image) {
 	case appScreenJoinBrowser:
 		render.DrawJoinBrowser(screen, render.JoinBrowserModel{Rooms: a.menu.Rooms, SelectedRoom: a.menu.RoomCursor, Status: a.menu.Status})
 	default:
-		render.DrawLauncherMenu(screen, render.LauncherMenuModel{SelectedOption: int(a.menu.Selected), SoloColor: a.menu.SoloColor, Status: a.menu.Status, RoomCount: len(a.menu.Rooms)})
+		render.DrawLauncherMenu(screen, render.LauncherMenuModel{SelectedOption: int(a.menu.Selected), Status: a.menu.Status, RoomCount: len(a.menu.Rooms)})
+		if a.setup.Active {
+			render.DrawLaunchSetup(screen, a.launchSetupModel())
+		}
 	}
+}
+
+func (a *App) launchSetupModel() render.LaunchSetupModel {
+	model := render.LaunchSetupModel{
+		ModeLabel:    "Solo Game Setup",
+		Description:  "Pick your team color, then start a local AI match.",
+		ConfirmLabel: "Start Solo Game",
+		Color:        a.setup.Color,
+		Status:       a.menu.Status,
+	}
+	if a.setup.Mode == menuOptionHost {
+		model.ModeLabel = "Host Multiplayer Setup"
+		model.Description = "Pick your team color, then start a LAN room from this client."
+		model.ConfirmLabel = "Host LAN Game"
+	}
+	return model
 }
 
 func (a *App) pollDiscoveryUpdates() {
@@ -154,20 +174,13 @@ func (a *App) setDiscoveredRooms(rooms []discovery.Room) {
 }
 
 func (a *App) updateMenu() error {
+	if a.setup.Active {
+		return a.updateLaunchSetup()
+	}
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		cursorX, cursorY := ebiten.CursorPosition()
 		x := float64(cursorX)
 		y := float64(cursorY)
-		if a.menu.Selected == menuOptionSolo {
-			if ui.PointInRect(x, y, render.LauncherSoloColorPrevRect()) {
-				a.menu.SoloColor = nextLauncherColor(a.menu.SoloColor, -1)
-				return nil
-			}
-			if ui.PointInRect(x, y, render.LauncherSoloColorNextRect()) {
-				a.menu.SoloColor = nextLauncherColor(a.menu.SoloColor, 1)
-				return nil
-			}
-		}
 		for index := 0; index < 3; index++ {
 			if !ui.PointInRect(x, y, render.MenuOptionRect(index)) {
 				continue
@@ -182,32 +195,54 @@ func (a *App) updateMenu() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		a.menu.Selected = (a.menu.Selected + 1) % 3
 	}
-	if a.menu.Selected == menuOptionSolo {
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
-			a.menu.SoloColor = nextLauncherColor(a.menu.SoloColor, -1)
-		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
-			a.menu.SoloColor = nextLauncherColor(a.menu.SoloColor, 1)
-		}
-	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		return a.activateMenuOption(a.menu.Selected)
 	}
 	return nil
 }
 
-func (a *App) activateMenuOption(option menuOption) error {
-	switch option {
-	case menuOptionSolo:
-		a.solo = NewSoloGameWithColors(a.menu.SoloColor, awayColorForSolo(a.menu.SoloColor))
-		a.screen = appScreenSolo
-		a.menu.Status = ""
-		ebiten.SetWindowTitle("Go Hockey - Solo")
-	case menuOptionHost:
-		if err := a.startHostedRemote(":4242"); err != nil {
-			a.menu.Status = "Unable to advertise local room"
+func (a *App) updateLaunchSetup() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		a.closeLaunchSetup()
+		return nil
+	}
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		cursorX, cursorY := ebiten.CursorPosition()
+		x := float64(cursorX)
+		y := float64(cursorY)
+		for index, teamColor := range launcherColorCycle {
+			if ui.PointInRect(x, y, render.LaunchSetupColorChipRect(index)) {
+				a.setup.Color = teamColor
+				return nil
+			}
 		}
+		if ui.PointInRect(x, y, render.LaunchSetupBackRect()) {
+			a.closeLaunchSetup()
+			return nil
+		}
+		if ui.PointInRect(x, y, render.LaunchSetupConfirmRect()) {
+			return a.confirmLaunchSetup()
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || inpututil.IsKeyJustPressed(ebiten.KeyA) {
+		a.setup.Color = nextLauncherColor(a.setup.Color, -1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || inpututil.IsKeyJustPressed(ebiten.KeyD) {
+		a.setup.Color = nextLauncherColor(a.setup.Color, 1)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
+		return a.confirmLaunchSetup()
+	}
+	return nil
+}
+
+func (a *App) activateMenuOption(option menuOption) error {
+	a.menu.Selected = option
+	switch option {
+	case menuOptionSolo, menuOptionHost:
+		a.openLaunchSetup(option)
 	case menuOptionJoin:
+		a.closeLaunchSetup()
 		a.screen = appScreenJoinBrowser
 		if a.browser == nil {
 			a.menu.Status = "LAN discovery unavailable"
@@ -217,6 +252,35 @@ func (a *App) activateMenuOption(option menuOption) error {
 			a.menu.Status = ""
 		}
 		ebiten.SetWindowTitle("Go Hockey - Join LAN Room")
+	}
+	return nil
+}
+
+func (a *App) openLaunchSetup(option menuOption) {
+	a.setup.Open(option, a.menu.Color)
+	a.menu.Status = ""
+}
+
+func (a *App) closeLaunchSetup() {
+	a.setup.Close()
+}
+
+func (a *App) confirmLaunchSetup() error {
+	a.menu.Color = a.setup.Color
+	switch a.setup.Mode {
+	case menuOptionSolo:
+		a.solo = NewSoloGameWithColors(a.menu.Color, opponentColorForSelection(a.menu.Color))
+		a.remote = nil
+		a.screen = appScreenSolo
+		a.menu.Status = ""
+		a.closeLaunchSetup()
+		ebiten.SetWindowTitle("Go Hockey - Solo")
+	case menuOptionHost:
+		if err := a.startHostedRemote(":4242", a.menu.Color); err != nil {
+			a.menu.Status = "Unable to advertise local room"
+			return nil
+		}
+		a.closeLaunchSetup()
 	}
 	return nil
 }
@@ -271,9 +335,9 @@ func (a *App) joinRoom(index int) error {
 	return nil
 }
 
-func (a *App) startHostedRemote(listenAddr string) error {
+func (a *App) startHostedRemote(listenAddr string, homeColor sim.TeamColor) error {
 	a.stopHostedServer()
-	srv, serveErr, advertiser, game, err := startHostedSession(listenAddr)
+	srv, serveErr, advertiser, game, err := startHostedSession(listenAddr, homeColor)
 	if err != nil {
 		return err
 	}
@@ -310,6 +374,7 @@ func (a *App) returnToMenu(status string) {
 	a.remote = nil
 	a.solo = nil
 	a.stopHostedServer()
+	a.closeLaunchSetup()
 	a.screen = appScreenMenu
 	a.menu.Status = status
 	ebiten.SetWindowTitle("Go Hockey")
@@ -322,6 +387,7 @@ func (a *App) returnToRoomMenu(status string) {
 	a.remote = nil
 	a.solo = nil
 	a.stopHostedServer()
+	a.closeLaunchSetup()
 	if a.browser == nil {
 		a.screen = appScreenMenu
 		if status == "" {

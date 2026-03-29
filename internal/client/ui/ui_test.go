@@ -33,7 +33,7 @@ func TestTextFacesAndMeasureText(t *testing.T) {
 
 func TestModalMenuLayout(t *testing.T) {
 	panel := ModalMenuPanelRect(3)
-	if panel.W != 460 || panel.H <= 0 {
+	if panel.W != 520 || panel.H <= 0 {
 		t.Fatalf("unexpected modal panel rect %+v", panel)
 	}
 	option := ModalMenuOptionRect(2, 3)

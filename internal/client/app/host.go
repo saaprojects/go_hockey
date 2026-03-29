@@ -13,11 +13,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-func startHostedSession(listenAddr string) (*server.Server, chan error, *discovery.Advertiser, *RemoteGame, error) {
+func startHostedSession(listenAddr string, homeColor sim.TeamColor) (*server.Server, chan error, *discovery.Advertiser, *RemoteGame, error) {
 	srv, err := server.Listen(listenAddr)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
+	srv.SetLobbyColors(homeColor, opponentColorForSelection(homeColor))
 	advertiser, err := discovery.NewAdvertiser(srv.Addr(), func() discovery.Status {
 		return discovery.Status{Players: srv.PlayerCount(), Capacity: 2}
 	})

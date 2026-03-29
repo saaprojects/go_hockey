@@ -102,6 +102,19 @@ func TestNextOpenTeamLocked(t *testing.T) {
 	}
 }
 
+func TestSetLobbyColorsUpdatesState(t *testing.T) {
+	srv, err := Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer srv.Close()
+
+	srv.SetLobbyColors(sim.TeamColorOrange, sim.TeamColorBlue)
+	if srv.state.HomeColor != sim.TeamColorOrange || srv.state.AwayColor != sim.TeamColorBlue {
+		t.Fatalf("unexpected lobby colors home=%q away=%q", srv.state.HomeColor, srv.state.AwayColor)
+	}
+}
+
 func TestServerCloneGameStateCopiesSlices(t *testing.T) {
 	state := sim.NewGameState()
 	copyState := cloneGameState(state)

@@ -60,6 +60,13 @@ func (s *Server) PlayerCount() int {
 	return len(s.teamOwners)
 }
 
+func (s *Server) SetLobbyColors(homeColor, awayColor sim.TeamColor) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.state.HomeColor = homeColor
+	s.state.AwayColor = awayColor
+}
+
 func (s *Server) Serve() error {
 	go s.tickLoop()
 	for {
