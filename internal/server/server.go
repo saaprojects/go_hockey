@@ -54,6 +54,12 @@ func (s *Server) Addr() string {
 	return s.listener.Addr().String()
 }
 
+func (s *Server) PlayerCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.teamOwners)
+}
+
 func (s *Server) Serve() error {
 	go s.tickLoop()
 	for {

@@ -4,6 +4,7 @@
 
 - `hockey-v2`: executable entrypoint
 - `internal/client`: solo and online Ebitengine clients
+- `internal/discovery`: LAN room discovery for the launcher
 - `internal/sim`: gameplay state and fixed-tick simulation core
 - `internal/netcode`: network message shapes and TCP client
 - `internal/server`: authoritative multiplayer match server
@@ -32,8 +33,10 @@ Launcher controls:
 
 - `Up` and `Down` or `W` and `S`: move between menu options
 - `Enter` or `Space`: launch the selected option
-- When `Join Multiplayer` is selected, type to edit the server address
-- `Backspace`: delete one character from the join address
+- `Click`: select a launcher card or join a discovered LAN room
+- `Join Multiplayer` opens the LAN room browser
+- In the LAN room browser, `Up` and `Down` or `W` and `S`: change the selected room
+- In the LAN room browser, `Enter` or `Space`: join the selected room
 
 ## In-match controls
 
@@ -57,7 +60,15 @@ Start a local server and immediately join it with one client:
 go run ./hockey-v2 -host
 ```
 
-Then open a second terminal for the other player:
+Then open the launcher on the second machine or terminal:
+
+```powershell
+go run ./hockey-v2
+```
+
+Choose `Join Multiplayer`, then click the discovered LAN room.
+
+You can still use the direct CLI path if you want:
 
 ```powershell
 go run ./hockey-v2 -join <your local IP>:4242
@@ -100,7 +111,7 @@ Run only the authoritative match server:
 go run ./hockey-v2 -server -listen :4242
 ```
 
-Join from another machine or terminal:
+Join from another machine with either the launcher LAN browser or a direct address:
 
 ```powershell
 go run ./hockey-v2 -join YOUR_HOST_OR_IP:4242
@@ -134,5 +145,3 @@ go run ./hockey-v2 -headless
 2. Use the same sim for solo, bot matches, and online play.
 3. Run multiplayer through a dedicated server process or `-host` mode.
 4. Replace the naive full-snapshot TCP path with prediction/interpolation once the baseline online loop feels good.
-
-

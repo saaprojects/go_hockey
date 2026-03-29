@@ -86,12 +86,13 @@ snapshotsDone:
 
 func (g *RemoteGame) currentInput() sim.InputFrame {
 	if g.state.Phase != sim.MatchPhasePlaying {
+		mouseAction := readyOverlayMouseAction(g.localTeam)
 		return sim.InputFrame{
 			Team:      g.localTeam,
 			Tick:      g.state.Tick + 1,
-			Ready:     inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter),
-			ColorPrev: inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft),
-			ColorNext: inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight),
+			Ready:     inpututil.IsKeyJustPressed(ebiten.KeySpace) || inpututil.IsKeyJustPressed(ebiten.KeyEnter) || mouseAction.ready,
+			ColorPrev: inpututil.IsKeyJustPressed(ebiten.KeyA) || inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) || mouseAction.colorPrev,
+			ColorNext: inpututil.IsKeyJustPressed(ebiten.KeyD) || inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) || mouseAction.colorNext,
 		}
 	}
 	return sim.InputFrame{
@@ -122,7 +123,7 @@ func (g *RemoteGame) drawNetworkHUD(screen *ebiten.Image) {
 	}
 	status := fmt.Sprintf("Online %s  WASD move  Shift pass  Space shoot/check  Tab switch", strings.ToUpper(string(g.localTeam)))
 	if g.state.Phase != sim.MatchPhasePlaying {
-		status = "Menu controls: A/Left and D/Right change color  Space or Enter toggles ready"
+		status = "Menu controls: A/Left and D/Right or click arrows change color  Space/Enter or click Ready toggles ready"
 	}
 	if g.disconnected != "" {
 		status = "Disconnected from server  Press Esc for the launcher"

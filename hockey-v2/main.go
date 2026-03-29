@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hockeyv2/internal/client"
+	"hockeyv2/internal/discovery"
 	"hockeyv2/internal/server"
 	"hockeyv2/internal/sim"
 )
@@ -63,6 +64,18 @@ func runServer(listenAddr string) {
 		log.Fatal(err)
 	}
 	defer srv.Close()
+
+	advertiser, err := discovery.NewAdvertiser(srv.Addr(), func() discovery.Status {
+		return discovery.Status{Players: srv.PlayerCount(), Capacity: 2}
+	})
+	if err != nil {
+		log.Printf("LAN discovery unavailable: %v", err)
+	} else {
+		defer advertiser.Close()
+		room := advertiser.Room()
+		log.Printf("LAN room %s (%s) is discoverable on the local network", room.Code, room.Name)
+	}
+
 	log.Printf("Go Hockey server listening on %s", srv.Addr())
 	if err := srv.Serve(); err != nil {
 		log.Fatal(err)
@@ -78,6 +91,17 @@ func runHost(listenAddr string) {
 	go func() {
 		serveErr <- srv.Serve()
 	}()
+
+	advertiser, err := discovery.NewAdvertiser(srv.Addr(), func() discovery.Status {
+		return discovery.Status{Players: srv.PlayerCount(), Capacity: 2}
+	})
+	if err != nil {
+		log.Printf("LAN discovery unavailable: %v", err)
+	} else {
+		defer advertiser.Close()
+		room := advertiser.Room()
+		log.Printf("LAN room %s (%s) is discoverable on the local network", room.Code, room.Name)
+	}
 
 	joinAddr := localJoinAddress(srv.Addr())
 	log.Printf("Hosting Go Hockey on %s", srv.Addr())

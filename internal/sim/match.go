@@ -55,7 +55,7 @@ func startPlayingPhase(state *GameState) {
 func updateMatchPhase(state *GameState, homeInput, awayInput TeamInput) {
 	applyPhaseInput(state, TeamHome, homeInput)
 	applyPhaseInput(state, TeamAway, awayInput)
-	if state.HomeReady && state.AwayReady {
+	if state.HomeReady && state.AwayReady && state.HomeColor != state.AwayColor {
 		startPlayingPhase(state)
 		return
 	}
@@ -65,7 +65,7 @@ func updateMatchPhase(state *GameState, homeInput, awayInput TeamInput) {
 	if state.PhaseTicks > 0 {
 		state.PhaseTicks--
 	}
-	if state.PhaseTicks == 0 {
+	if state.PhaseTicks == 0 && state.HomeColor != state.AwayColor {
 		startPlayingPhase(state)
 	}
 }
@@ -73,18 +73,24 @@ func updateMatchPhase(state *GameState, homeInput, awayInput TeamInput) {
 func applyPhaseInput(state *GameState, team Team, input TeamInput) {
 	if input.ColorPrev {
 		setTeamReady(state, team, false)
-		setTeamColor(state, team, nextAvailableTeamColor(teamColorForTeam(state, team), otherTeamColor(state, team), -1))
+		setTeamColor(state, team, nextTeamColor(teamColorForTeam(state, team), -1))
 	}
 	if input.ColorNext {
 		setTeamReady(state, team, false)
-		setTeamColor(state, team, nextAvailableTeamColor(teamColorForTeam(state, team), otherTeamColor(state, team), 1))
+		setTeamColor(state, team, nextTeamColor(teamColorForTeam(state, team), 1))
 	}
 	if input.Ready {
-		setTeamReady(state, team, !teamReady(state, team))
+		if teamReady(state, team) {
+			setTeamReady(state, team, false)
+			return
+		}
+		if canReadyTeam(state, team) {
+			setTeamReady(state, team, true)
+		}
 	}
 }
 
-func nextAvailableTeamColor(current, blocked TeamColor, delta int) TeamColor {
+func nextTeamColor(current TeamColor, delta int) TeamColor {
 	if delta == 0 {
 		delta = 1
 	}
@@ -95,17 +101,19 @@ func nextAvailableTeamColor(current, blocked TeamColor, delta int) TeamColor {
 			break
 		}
 	}
-	for step := 1; step <= len(teamColorCycle); step++ {
-		nextIndex := (currentIndex + step*delta) % len(teamColorCycle)
-		if nextIndex < 0 {
-			nextIndex += len(teamColorCycle)
-		}
-		candidate := teamColorCycle[nextIndex]
-		if candidate != blocked {
-			return candidate
-		}
+	nextIndex := (currentIndex + delta) % len(teamColorCycle)
+	if nextIndex < 0 {
+		nextIndex += len(teamColorCycle)
 	}
-	return current
+	return teamColorCycle[nextIndex]
+}
+
+func canReadyTeam(state *GameState, team Team) bool {
+	other := otherTeam(team)
+	if !teamReady(state, other) {
+		return true
+	}
+	return teamColorForTeam(state, team) != teamColorForTeam(state, other)
 }
 
 func teamColorForTeam(state *GameState, team Team) TeamColor {
@@ -120,6 +128,13 @@ func otherTeamColor(state *GameState, team Team) TeamColor {
 		return state.AwayColor
 	}
 	return state.HomeColor
+}
+
+func otherTeam(team Team) Team {
+	if team == TeamHome {
+		return TeamAway
+	}
+	return TeamHome
 }
 
 func setTeamColor(state *GameState, team Team, color TeamColor) {

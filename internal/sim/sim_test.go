@@ -244,11 +244,34 @@ func TestPregameWaitsForBothPlayers(t *testing.T) {
 	}
 }
 
-func TestPregameColorSelectionKeepsTeamsUnique(t *testing.T) {
+func TestPregameColorSelectionUsesStableCycle(t *testing.T) {
 	state := NewMultiplayerGameState()
+	state.HomeColor = TeamColorBlack
+	state.AwayColor = TeamColorOrange
+
 	Step(&state, []InputFrame{{Team: TeamHome, ColorNext: true}})
-	if state.HomeColor == state.AwayColor {
-		t.Fatalf("expected home color to stay unique, both were %q", state.HomeColor)
+
+	if state.HomeColor != TeamColorOrange {
+		t.Fatalf("expected home color to advance to orange, got %q", state.HomeColor)
+	}
+}
+
+func TestPregameSecondReadyIsBlockedWhenColorsMatch(t *testing.T) {
+	state := NewMultiplayerGameState()
+	state.HomeColor = TeamColorBlue
+	state.AwayColor = TeamColorBlue
+
+	Step(&state, []InputFrame{{Team: TeamHome, Ready: true}})
+	if !state.HomeReady {
+		t.Fatalf("expected first team to be able to lock its current color")
+	}
+
+	Step(&state, []InputFrame{{Team: TeamAway, Ready: true}})
+	if state.AwayReady {
+		t.Fatalf("expected second team to stay unready when colors match")
+	}
+	if state.Phase != MatchPhasePregame {
+		t.Fatalf("expected pregame to continue until colors differ, got %q", state.Phase)
 	}
 }
 
@@ -281,6 +304,23 @@ func TestClockStartsIntermissionMenuWhenEnabled(t *testing.T) {
 	}
 	if state.PhaseTicks <= 0 {
 		t.Fatalf("expected intermission countdown to be active")
+	}
+}
+
+func TestIntermissionWaitsForUniqueColorsBeforeAutoResume(t *testing.T) {
+	state := NewMultiplayerGameState()
+	state.Phase = MatchPhaseIntermission
+	state.PhaseTicks = 1
+	state.HomeColor = TeamColorGreen
+	state.AwayColor = TeamColorGreen
+
+	Step(&state, nil)
+
+	if state.Phase != MatchPhaseIntermission {
+		t.Fatalf("expected intermission to keep waiting when colors match, got %q", state.Phase)
+	}
+	if state.PhaseTicks != 0 {
+		t.Fatalf("expected countdown to reach zero while waiting for unique colors, got %d", state.PhaseTicks)
 	}
 }
 

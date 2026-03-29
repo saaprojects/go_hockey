@@ -261,6 +261,9 @@ func (g *SoloGame) drawReadyOverlay(screen *ebiten.Image, localTeam sim.Team, su
 	panelY := 170.0
 	title := "Pregame"
 	statusLine := "Both players must ready up to start"
+	if g.state.HomeColor == g.state.AwayColor {
+		statusLine = "Choose different colors before play can continue"
+	}
 	if g.state.Phase == sim.MatchPhaseIntermission {
 		period := g.state.LastIntermissionStats.Period
 		if period == 0 && g.state.Period > 1 {
@@ -268,13 +271,15 @@ func (g *SoloGame) drawReadyOverlay(screen *ebiten.Image, localTeam sim.Team, su
 		}
 		title = fmt.Sprintf("Intermission - End of Period %d", period)
 		secondsLeft := (g.state.PhaseTicks + sim.TickRate - 1) / sim.TickRate
-		statusLine = fmt.Sprintf("Auto resume in %ds", secondsLeft)
+		if g.state.HomeColor != g.state.AwayColor {
+			statusLine = fmt.Sprintf("Auto resume in %ds", secondsLeft)
+		}
 	}
 
 	ebitenutil.DebugPrintAt(screen, title, int(sim.CenterX)-110, 54)
 	ebitenutil.DebugPrintAt(screen, subtitle, int(sim.CenterX)-120, 80)
-	ebitenutil.DebugPrintAt(screen, statusLine, int(sim.CenterX)-112, 104)
-	ebitenutil.DebugPrintAt(screen, "A/Left and D/Right change color  Space or Enter toggles ready", int(sim.CenterX)-200, 128)
+	ebitenutil.DebugPrintAt(screen, statusLine, int(sim.CenterX)-152, 104)
+	ebitenutil.DebugPrintAt(screen, "A/Left and D/Right or click arrows change color  Space/Enter or click Ready toggles ready", int(sim.CenterX)-260, 128)
 
 	g.drawTeamSelectionCard(screen, leftX, panelY, sim.TeamHome, localTeam == sim.TeamHome, g.state.HomeReady)
 	g.drawTeamSelectionCard(screen, rightX, panelY, sim.TeamAway, localTeam == sim.TeamAway, g.state.AwayReady)
@@ -308,15 +313,33 @@ func (g *SoloGame) drawTeamSelectionCard(screen *ebiten.Image, x, y float64, tea
 
 	ebitenutil.DebugPrintAt(screen, teamLabel, int(x)+82, int(y)+36)
 	ebitenutil.DebugPrintAt(screen, ownerLabel, int(x)+82, int(y)+58)
-	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Color: %s", teamColorLabel(teamColorForDisplay(g.state, team))), int(x)+28, int(y)+106)
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Color: %s", teamColorLabel(teamColorForDisplay(g.state, team))), int(x)+106, int(y)+106)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("Status: %s", readyLabel), int(x)+28, int(y)+132)
 	if ready {
-		ebitenutil.DebugPrintAt(screen, "Press Space/Enter again to unready", int(x)+28, int(y)+170)
+		ebitenutil.DebugPrintAt(screen, "Press Space/Enter or click Ready to unready", int(x)+28, int(y)+170)
 	} else if local {
-		ebitenutil.DebugPrintAt(screen, "Choose a color, then ready up", int(x)+28, int(y)+170)
+		ebitenutil.DebugPrintAt(screen, "Choose a color, then click Ready", int(x)+28, int(y)+170)
 	} else {
 		ebitenutil.DebugPrintAt(screen, "Waiting on the other player", int(x)+28, int(y)+170)
 	}
+	if !local {
+		return
+	}
+
+	cursorX, cursorY := ebiten.CursorPosition()
+	prevRect := readyOverlayColorPrevRect(team)
+	nextRect := readyOverlayColorNextRect(team)
+	readyRect := readyOverlayReadyRect(team)
+	colorLabelRect := readyOverlayColorLabelRect(team)
+	drawOverlayButton(screen, prevRect, "<", pointInRect(float64(cursorX), float64(cursorY), prevRect), false)
+	drawRoundedFill(screen, colorLabelRect.x, colorLabelRect.y, colorLabelRect.w, colorLabelRect.h, 14, color.RGBA{0xe5, 0xec, 0xf5, 0xff})
+	drawUIText(screen, teamColorLabel(teamColorForDisplay(g.state, team)), uiSmallFace, colorLabelRect.x+18, colorLabelRect.y+10, colorTextDark)
+	drawOverlayButton(screen, nextRect, ">", pointInRect(float64(cursorX), float64(cursorY), nextRect), false)
+	readyLabel = "Ready"
+	if ready {
+		readyLabel = "Unready"
+	}
+	drawOverlayButton(screen, readyRect, readyLabel, pointInRect(float64(cursorX), float64(cursorY), readyRect), true)
 }
 
 func (g *SoloGame) drawIntermissionStatsCard(screen *ebiten.Image, x, y float64) {
@@ -332,6 +355,82 @@ func (g *SoloGame) drawIntermissionStatsCard(screen *ebiten.Image, x, y float64)
 	ebitenutil.DebugPrintAt(screen, "Team            SOG   Goals", int(x)+38, int(y)+48)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("HOME (%s)      %d      %d", teamColorLabel(g.state.HomeColor), stats.Home.ShotsOnGoal, stats.Home.Goals), int(x)+38, int(y)+72)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("AWAY (%s)      %d      %d", teamColorLabel(g.state.AwayColor), stats.Away.ShotsOnGoal, stats.Away.Goals), int(x)+38, int(y)+96)
+}
+
+func readyOverlayCardRect(team sim.Team) rect {
+	panelWidth := 360.0
+	gap := 34.0
+	x := sim.CenterX - panelWidth - gap/2
+	if team == sim.TeamAway {
+		x = sim.CenterX + gap/2
+	}
+	return rect{x: x, y: 170, w: panelWidth, h: 260}
+}
+
+func readyOverlayColorPrevRect(team sim.Team) rect {
+	card := readyOverlayCardRect(team)
+	return rect{x: card.x + 28, y: card.y + 196, w: 42, h: 36}
+}
+
+func readyOverlayColorLabelRect(team sim.Team) rect {
+	card := readyOverlayCardRect(team)
+	return rect{x: card.x + 82, y: card.y + 196, w: 196, h: 36}
+}
+
+func readyOverlayColorNextRect(team sim.Team) rect {
+	card := readyOverlayCardRect(team)
+	return rect{x: card.x + 290, y: card.y + 196, w: 42, h: 36}
+}
+
+func readyOverlayReadyRect(team sim.Team) rect {
+	card := readyOverlayCardRect(team)
+	return rect{x: card.x + 28, y: card.y + 236, w: card.w - 56, h: 32}
+}
+
+type readyMenuAction struct {
+	colorPrev bool
+	colorNext bool
+	ready     bool
+}
+
+func readyOverlayMouseAction(localTeam sim.Team) readyMenuAction {
+	if !inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		return readyMenuAction{}
+	}
+	cursorX, cursorY := ebiten.CursorPosition()
+	x := float64(cursorX)
+	y := float64(cursorY)
+	if pointInRect(x, y, readyOverlayColorPrevRect(localTeam)) {
+		return readyMenuAction{colorPrev: true}
+	}
+	if pointInRect(x, y, readyOverlayColorNextRect(localTeam)) {
+		return readyMenuAction{colorNext: true}
+	}
+	if pointInRect(x, y, readyOverlayReadyRect(localTeam)) {
+		return readyMenuAction{ready: true}
+	}
+	return readyMenuAction{}
+}
+
+func drawOverlayButton(screen *ebiten.Image, area rect, label string, hovered bool, primary bool) {
+	fill := color.RGBA{0xe6, 0xec, 0xf4, 0xff}
+	outline := color.RGBA{0xbb, 0xca, 0xd8, 0xff}
+	textColor := colorTextDark
+	if primary {
+		fill = color.RGBA{0x13, 0x3d, 0x68, 0xff}
+		outline = color.RGBA{0x2f, 0x7b, 0xc4, 0xff}
+		textColor = color.RGBA{0xf2, 0xf8, 0xff, 0xff}
+	}
+	if hovered {
+		outline = color.RGBA{0x56, 0x9f, 0xed, 0xff}
+	}
+	drawRoundedFill(screen, area.x, area.y, area.w, area.h, 12, fill)
+	ebitenutil.DrawRect(screen, area.x, area.y, area.w, 2, outline)
+	ebitenutil.DrawRect(screen, area.x, area.y+area.h-2, area.w, 2, outline)
+	ebitenutil.DrawRect(screen, area.x, area.y, 2, area.h, outline)
+	ebitenutil.DrawRect(screen, area.x+area.w-2, area.y, 2, area.h, outline)
+	labelWidth, _ := measureUIText(label, uiSmallFace)
+	drawUIText(screen, label, uiSmallFace, area.x+(area.w-labelWidth)/2, area.y+9, textColor)
 }
 
 func teamColorForDisplay(state sim.GameState, team sim.Team) sim.TeamColor {
