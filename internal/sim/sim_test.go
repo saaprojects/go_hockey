@@ -1,6 +1,9 @@
 package sim
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestNewGameStateStartsWithRostersAndFaceoff(t *testing.T) {
 	state := NewGameState()
@@ -512,5 +515,101 @@ func TestIntermissionCapturesCompletedPeriodStats(t *testing.T) {
 	}
 	if state.CurrentPeriodStats.Home.ShotsOnGoal != 0 || state.CurrentPeriodStats.Home.Goals != 0 || state.CurrentPeriodStats.Away.ShotsOnGoal != 0 || state.CurrentPeriodStats.Away.Goals != 0 {
 		t.Fatalf("expected fresh stats for the next period, got %+v", state.CurrentPeriodStats)
+	}
+}
+
+func TestSmokeSummaryIncludesCoreState(t *testing.T) {
+	summary := SmokeSummary()
+	for _, fragment := range []string{"Go Hockey ready.", "tick=", "home=3", "away=3", "puck=("} {
+		if !strings.Contains(summary, fragment) {
+			t.Fatalf("expected smoke summary to contain %q, got %q", fragment, summary)
+		}
+	}
+}
+
+func TestStatsHelpers(t *testing.T) {
+	state := NewGameState()
+	recordShotOnGoal(&state, TeamHome)
+	recordGoalForTeam(&state, TeamAway)
+	registerShotOnGoalIfNeeded(&state, TeamHome)
+	if state.CurrentPeriodStats.Home.ShotsOnGoal != 1 || state.CurrentPeriodStats.Away.Goals != 1 {
+		t.Fatalf("unexpected stats after direct records: %+v", state.CurrentPeriodStats)
+	}
+
+	markShotReleased(&state, TeamAway)
+	registerShotOnGoalIfNeeded(&state, TeamAway)
+	if state.CurrentPeriodStats.Away.ShotsOnGoal != 1 || !state.Puck.ShotCounted {
+		t.Fatalf("expected away shot on goal to register once, got %+v puck=%+v", state.CurrentPeriodStats, state.Puck)
+	}
+	registerShotOnGoalIfNeeded(&state, TeamAway)
+	if state.CurrentPeriodStats.Away.ShotsOnGoal != 1 {
+		t.Fatalf("expected shot on goal to count only once, got %+v", state.CurrentPeriodStats)
+	}
+
+	clearShotMetadata(&state)
+	if state.Puck.ShotTeam != TeamNone || state.Puck.ShotActive || state.Puck.ShotCounted {
+		t.Fatalf("expected shot metadata cleared, got %+v", state.Puck)
+	}
+
+	finalizePeriodStats(&state, 2)
+	if state.LastIntermissionStats.Period != 1 || state.CurrentPeriodStats.Period != 2 {
+		t.Fatalf("unexpected period stats after finalize: last=%+v current=%+v", state.LastIntermissionStats, state.CurrentPeriodStats)
+	}
+}
+
+func TestStatsHelpersIgnoreNilAndTeamNone(t *testing.T) {
+	recordShotOnGoal(nil, TeamHome)
+	recordGoalForTeam(nil, TeamAway)
+	clearShotMetadata(nil)
+	markShotReleased(nil, TeamHome)
+	registerShotOnGoalIfNeeded(nil, TeamHome)
+
+	state := NewGameState()
+	recordShotOnGoal(&state, TeamNone)
+	recordGoalForTeam(&state, TeamNone)
+	registerShotOnGoalIfNeeded(&state, TeamNone)
+	if state.CurrentPeriodStats.Home != (TeamPeriodStats{}) || state.CurrentPeriodStats.Away != (TeamPeriodStats{}) {
+		t.Fatalf("expected TeamNone updates to be ignored, got %+v", state.CurrentPeriodStats)
+	}
+}
+
+func TestMatchHelpers(t *testing.T) {
+	state := NewMultiplayerGameState()
+	startReadyPhase(&state, MatchPhaseIntermission)
+	if state.Phase != MatchPhaseIntermission || state.PhaseTicks <= 0 || state.HomeReady || state.AwayReady {
+		t.Fatalf("unexpected ready phase state %+v", state)
+	}
+	startPlayingPhase(&state)
+	if state.Phase != MatchPhasePlaying || state.HomeReady || state.AwayReady {
+		t.Fatalf("unexpected playing phase state %+v", state)
+	}
+	startPostgamePhase(&state)
+	if state.Phase != MatchPhasePostgame || state.HomeReady || state.AwayReady {
+		t.Fatalf("unexpected postgame phase state %+v", state)
+	}
+	if got := nextTeamColor(TeamColorBlack, -1); got != TeamColorRed {
+		t.Fatalf("expected wrapped previous team color, got %q", got)
+	}
+	if got := nextTeamColor(TeamColorBlack, 0); got != TeamColorOrange {
+		t.Fatalf("expected zero delta to advance, got %q", got)
+	}
+	if got := otherTeam(TeamHome); got != TeamAway {
+		t.Fatalf("expected home opposite away, got %q", got)
+	}
+	if got := otherTeamColor(&state, TeamHome); got != state.AwayColor {
+		t.Fatalf("expected away team color, got %q", got)
+	}
+	setTeamColor(&state, TeamHome, TeamColorGreen)
+	if got := teamColorForTeam(&state, TeamHome); got != TeamColorGreen {
+		t.Fatalf("expected updated home team color, got %q", got)
+	}
+	setTeamReady(&state, TeamAway, true)
+	if !teamReady(&state, TeamAway) {
+		t.Fatalf("expected away team ready")
+	}
+	state.HomeColor = TeamColorBlue
+	state.AwayColor = TeamColorBlue
+	if canReadyTeam(&state, TeamHome) {
+		t.Fatalf("expected home ready blocked when away already locked same color")
 	}
 }
