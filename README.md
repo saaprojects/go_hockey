@@ -1,13 +1,4 @@
-# Hockey 26 v2
-
-This folder is the Go rewrite for the multiplayer version of the game.
-
-The current Python/Tkinter game remains the playable `v1` in the repo root. This `v2` workspace is where we are rebuilding the game around:
-
-- an authoritative simulation layer
-- explicit player input frames
-- online multiplayer networking
-- an Ebitengine client
+# Go Hockey
 
 ## Current layout
 
