@@ -179,9 +179,9 @@ func (a *App) drawMenu(screen *ebiten.Image) {
 	topPanelWidth := 580.0
 	topPanelHeight := 102.0
 	footerX := sim.CenterX - 290.0
-	footerY := 500.0
+	footerY := 536.0
 	footerWidth := 580.0
-	footerHeight := 116.0
+	footerHeight := 112.0
 
 	topFill := color.RGBA{0xf8, 0xfb, 0xff, 0xff}
 	footerFill := color.RGBA{0x13, 0x29, 0x44, 0xff}
@@ -224,11 +224,11 @@ func (a *App) drawMenu(screen *ebiten.Image) {
 	drawRoundedFill(screen, footerX, footerY, footerWidth, footerHeight, 20, footerFill)
 	colorsLine := "Team colors: Black  |  Orange  |  Green  |  Blue  |  Red"
 	colorsWidth, _ := measureUIText(colorsLine, uiBodyFace)
-	drawUIText(screen, colorsLine, uiBodyFace, sim.CenterX-colorsWidth/2, 520, lightText)
+	drawUIText(screen, colorsLine, uiBodyFace, sim.CenterX-colorsWidth/2, footerY+18, lightText)
 	a.drawMenuFooter(screen, footerX, footerY, footerWidth, footerHeight, accentText, lightText, inputFill)
 	if a.menu.status != "" {
 		statusWidth, _ := measureUIText(a.menu.status, uiSmallFace)
-		drawUIText(screen, a.menu.status, uiSmallFace, sim.CenterX-statusWidth/2, 630, colorTextDark)
+		drawUIText(screen, a.menu.status, uiSmallFace, sim.CenterX-statusWidth/2, footerY+footerHeight+18, colorTextDark)
 	}
 }
 
@@ -253,28 +253,29 @@ func (a *App) drawMenuOptionCard(screen *ebiten.Image, x, y, width, height float
 }
 
 func (a *App) drawMenuFooter(screen *ebiten.Image, x, y, width, height float64, accentText, lightText, inputFill color.RGBA) {
+	titleY := y + 46
+	rowY := y + 68
+	helpY := y + 94
 	switch a.menu.selected {
 	case menuOptionSolo:
 		palette := paletteForTeamColor(a.menu.soloColor)
-		drawUIText(screen, "Solo team color", uiSmallFace, x+34, 552, accentText)
-		vectorX := x + 34.0
-		vectorY := 573.0
-		drawRoundedFill(screen, vectorX, vectorY, 26, 26, 10, palette.Primary)
-		drawUIText(screen, teamColorLabel(a.menu.soloColor), uiBodyFace, x+72, 570, lightText)
+		drawUIText(screen, "Solo team color", uiSmallFace, x+34, titleY, accentText)
+		drawRoundedFill(screen, x+34, rowY, 26, 26, 10, palette.Primary)
+		drawUIText(screen, teamColorLabel(a.menu.soloColor), uiBodyFace, x+72, rowY-2, lightText)
 		help := "Use Left and Right to change your solo team color before starting"
-		drawUIText(screen, help, uiSmallFace, x+34, 600, accentText)
+		drawUIText(screen, help, uiSmallFace, x+34, helpY, accentText)
 	case menuOptionHost:
-		drawUIText(screen, "Host Multiplayer", uiSmallFace, x+34, 552, accentText)
+		drawUIText(screen, "Host Multiplayer", uiSmallFace, x+34, titleY, accentText)
 		help := "Starts a local server and joins it from this client without exposing an address in the UI"
-		drawUIText(screen, help, uiSmallFace, x+34, 580, lightText)
+		drawUIText(screen, help, uiSmallFace, x+34, rowY+6, lightText)
 	case menuOptionJoin:
-		drawUIText(screen, "Server address", uiSmallFace, x+34, 552, accentText)
-		drawRoundedFill(screen, x+34, 570, width-68, 32, 10, inputFill)
+		drawUIText(screen, "Server address", uiSmallFace, x+34, titleY, accentText)
+		drawRoundedFill(screen, x+34, rowY, width-68, 32, 10, inputFill)
 		if a.menu.joinAddr != "" {
-			drawUIText(screen, a.menu.joinAddr, uiSmallFace, x+48, 578, lightText)
+			drawUIText(screen, a.menu.joinAddr, uiSmallFace, x+48, rowY+8, lightText)
 		}
 		help := "Type the address you want to join. Backspace deletes."
-		drawUIText(screen, help, uiSmallFace, x+34, 606, accentText)
+		drawUIText(screen, help, uiSmallFace, x+34, helpY, accentText)
 	}
 }
 
