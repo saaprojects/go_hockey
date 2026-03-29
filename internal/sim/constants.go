@@ -27,7 +27,7 @@ const (
 
 const (
 	RegulationPeriods   = 3
-	PeriodLengthSeconds = 75.0
+	PeriodLengthSeconds = 120.0
 	OTLengthSeconds     = 60.0
 	FaceoffFreeze       = 2.4
 )
