@@ -32,7 +32,13 @@ const (
 	menuOptionJoin
 )
 
-const defaultJoinAddress = "127.0.0.1:4242"
+var launcherColorCycle = []sim.TeamColor{
+	sim.TeamColorBlack,
+	sim.TeamColorOrange,
+	sim.TeamColorGreen,
+	sim.TeamColorBlue,
+	sim.TeamColorRed,
+}
 
 type App struct {
 	screen       appScreen
@@ -44,14 +50,15 @@ type App struct {
 }
 
 type launchMenu struct {
-	selected menuOption
-	joinAddr string
-	status   string
+	selected  menuOption
+	joinAddr  string
+	soloColor sim.TeamColor
+	status    string
 }
 
 func RunApp() error {
 	ebiten.SetWindowSize(int(sim.WindowWidth), int(sim.WindowHeight))
-	ebiten.SetWindowTitle("Hockey 26 v2")
+	ebiten.SetWindowTitle("Go Hockey")
 	ebiten.SetTPS(sim.TickRate)
 	return ebiten.RunGame(NewApp())
 }
@@ -60,8 +67,9 @@ func NewApp() *App {
 	return &App{
 		screen: appScreenMenu,
 		menu: launchMenu{
-			selected: menuOptionSolo,
-			joinAddr: defaultJoinAddress,
+			selected:  menuOptionSolo,
+			joinAddr:  "",
+			soloColor: sim.TeamColorBlue,
 		},
 	}
 }
@@ -82,7 +90,7 @@ func (a *App) Update() error {
 		select {
 		case err := <-a.hostServeErr:
 			if err != nil {
-				a.returnToMenu(fmt.Sprintf("Host stopped: %v", err))
+				a.returnToMenu("Host stopped")
 				return nil
 			}
 		default:
@@ -115,6 +123,14 @@ func (a *App) updateMenu() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
 		a.menu.selected = (a.menu.selected + 1) % 3
 	}
+	if a.menu.selected == menuOptionSolo {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowLeft) {
+			a.menu.soloColor = nextLauncherColor(a.menu.soloColor, -1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowRight) {
+			a.menu.soloColor = nextLauncherColor(a.menu.soloColor, 1)
+		}
+	}
 	if a.menu.selected == menuOptionJoin {
 		for _, r := range ebiten.AppendInputChars(nil) {
 			if isJoinAddressRune(r) {
@@ -127,28 +143,25 @@ func (a *App) updateMenu() error {
 				a.menu.joinAddr = string(runes[:len(runes)-1])
 			}
 		}
-		if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
-			a.menu.joinAddr = defaultJoinAddress
-		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		switch a.menu.selected {
 		case menuOptionSolo:
-			a.solo = NewSoloGame()
+			a.solo = NewSoloGameWithColors(a.menu.soloColor, awayColorForSolo(a.menu.soloColor))
 			a.screen = appScreenSolo
-			ebiten.SetWindowTitle("Hockey 26 v2 - Solo")
+			ebiten.SetWindowTitle("Go Hockey - Solo")
 		case menuOptionHost:
 			if err := a.startHostedRemote(":4242"); err != nil {
-				a.menu.status = err.Error()
+				a.menu.status = "Unable to host local server"
 			}
 		case menuOptionJoin:
 			addr := strings.TrimSpace(a.menu.joinAddr)
 			if addr == "" {
-				a.menu.status = "Enter a server address like 127.0.0.1:4242"
+				a.menu.status = "Enter a server address to connect"
 				return nil
 			}
 			if err := a.startRemote(addr); err != nil {
-				a.menu.status = err.Error()
+				a.menu.status = "Unable to connect to server"
 			}
 		}
 	}
@@ -165,26 +178,29 @@ func (a *App) drawMenu(screen *ebiten.Image) {
 	topPanelY := 42.0
 	topPanelWidth := 580.0
 	topPanelHeight := 102.0
-	footerX := sim.CenterX - 330.0
-	footerY := 494.0
-	footerWidth := 660.0
-	footerHeight := 126.0
+	footerX := sim.CenterX - 290.0
+	footerY := 500.0
+	footerWidth := 580.0
+	footerHeight := 116.0
 
-	topFill := color.RGBA{0xf8, 0xfb, 0xff, 0xf4}
-	footerFill := color.RGBA{0x10, 0x22, 0x39, 0xdd}
+	topFill := color.RGBA{0xf8, 0xfb, 0xff, 0xff}
+	footerFill := color.RGBA{0x13, 0x29, 0x44, 0xff}
+	cardFill := color.RGBA{0xfc, 0xfd, 0xff, 0xff}
+	selectedFill := color.RGBA{0x1c, 0x42, 0x6b, 0xff}
 	mutedText := color.RGBA{0x5b, 0x6c, 0x80, 0xff}
 	lightText := color.RGBA{0xee, 0xf5, 0xff, 0xff}
-	accentText := color.RGBA{0x9e, 0xcf, 0xff, 0xff}
+	accentText := color.RGBA{0xa9, 0xd3, 0xff, 0xff}
+	inputFill := color.RGBA{0x09, 0x18, 0x2a, 0xff}
 
 	ebitenutil.DrawRect(screen, topPanelX+8, topPanelY+10, topPanelWidth, topPanelHeight, colorPanelShadow)
 	drawRoundedFill(screen, topPanelX, topPanelY, topPanelWidth, topPanelHeight, 24, topFill)
-	title := "Hockey 26 v2"
+	title := "Go Hockey"
 	titleWidth, _ := measureUIText(title, uiTitleFace)
 	drawUIText(screen, title, uiTitleFace, sim.CenterX-titleWidth/2, 60, colorTextDark)
 	subtitle := "Choose solo, host, or join from this same client"
 	subtitleWidth, _ := measureUIText(subtitle, uiBodyFace)
 	drawUIText(screen, subtitle, uiBodyFace, sim.CenterX-subtitleWidth/2, 96, colorTextDark)
-	controls := "Enter or Space starts, Up or Down chooses, Esc returns here from a match"
+	controls := "Enter starts, Up or Down chooses, Esc returns here from a match"
 	controlsWidth, _ := measureUIText(controls, uiSmallFace)
 	drawUIText(screen, controls, uiSmallFace, sim.CenterX-controlsWidth/2, 122, mutedText)
 
@@ -197,45 +213,69 @@ func (a *App) drawMenu(screen *ebiten.Image) {
 	details := []string{
 		"Play locally against AI in the same client.",
 		"Start a local server and join it from this window.",
-		fmt.Sprintf("Connect to another host at %s", a.menu.joinAddr),
+		"Connect to another host after entering a server address.",
 	}
 	for index, label := range labels {
 		y := cardY + float64(index)*(cardHeight+gap)
-		a.drawMenuOptionCard(screen, cardX, y, cardWidth, cardHeight, label, details[index], a.menu.selected == menuOption(index))
+		a.drawMenuOptionCard(screen, cardX, y, cardWidth, cardHeight, label, details[index], a.menu.selected == menuOption(index), cardFill, selectedFill)
 	}
 
-	ebitenutil.DrawRect(screen, footerX+8, footerY+10, footerWidth, footerHeight, color.RGBA{0x03, 0x0b, 0x14, 0x55})
-	drawRoundedFill(screen, footerX, footerY, footerWidth, footerHeight, 24, footerFill)
-	colorsLine := "Multiplayer colors: Black  |  Orange  |  Green  |  Blue  |  Red"
+	ebitenutil.DrawRect(screen, footerX+8, footerY+10, footerWidth, footerHeight, color.RGBA{0x03, 0x0b, 0x14, 0x44})
+	drawRoundedFill(screen, footerX, footerY, footerWidth, footerHeight, 20, footerFill)
+	colorsLine := "Team colors: Black  |  Orange  |  Green  |  Blue  |  Red"
 	colorsWidth, _ := measureUIText(colorsLine, uiBodyFace)
-	drawUIText(screen, colorsLine, uiBodyFace, sim.CenterX-colorsWidth/2, 522, lightText)
-	joinHelp := "When Join Multiplayer is selected, type to edit the address. Backspace deletes. Tab resets to 127.0.0.1:4242."
-	joinHelpWidth, _ := measureUIText(joinHelp, uiSmallFace)
-	drawUIText(screen, joinHelp, uiSmallFace, sim.CenterX-joinHelpWidth/2, 556, accentText)
+	drawUIText(screen, colorsLine, uiBodyFace, sim.CenterX-colorsWidth/2, 520, lightText)
+	a.drawMenuFooter(screen, footerX, footerY, footerWidth, footerHeight, accentText, lightText, inputFill)
 	if a.menu.status != "" {
-		statusWidth, _ := measureUIText(a.menu.status, uiBodyFace)
-		drawUIText(screen, a.menu.status, uiBodyFace, sim.CenterX-statusWidth/2, 592, lightText)
+		statusWidth, _ := measureUIText(a.menu.status, uiSmallFace)
+		drawUIText(screen, a.menu.status, uiSmallFace, sim.CenterX-statusWidth/2, 630, colorTextDark)
 	}
 }
 
-func (a *App) drawMenuOptionCard(screen *ebiten.Image, x, y, width, height float64, label, detail string, selected bool) {
-	cardFill := color.RGBA{0xf7, 0xfb, 0xff, 0xfa}
+func (a *App) drawMenuOptionCard(screen *ebiten.Image, x, y, width, height float64, label, detail string, selected bool, cardFill, selectedFill color.RGBA) {
+	fill := cardFill
 	stripe := color.RGBA{0x4e, 0x72, 0x97, 0xff}
 	titleColor := colorTextDark
 	detailColor := color.RGBA{0x4f, 0x60, 0x74, 0xff}
 	shadow := colorPanelShadow
 	if selected {
-		cardFill = color.RGBA{0x16, 0x35, 0x58, 0xfa}
+		fill = selectedFill
 		stripe = color.RGBA{0x46, 0x9b, 0xff, 0xff}
 		titleColor = color.RGBA{0xff, 0xff, 0xff, 0xff}
 		detailColor = color.RGBA{0xdd, 0xee, 0xff, 0xff}
-		shadow = color.RGBA{0x02, 0x08, 0x11, 0x70}
+		shadow = color.RGBA{0x02, 0x08, 0x11, 0x60}
 	}
 	ebitenutil.DrawRect(screen, x+8, y+10, width, height, shadow)
-	drawRoundedFill(screen, x, y, width, height, 20, cardFill)
+	drawRoundedFill(screen, x, y, width, height, 20, fill)
 	ebitenutil.DrawRect(screen, x, y, 18, height, stripe)
 	drawUIText(screen, label, uiBodyFace, x+36, y+24, titleColor)
 	drawUIText(screen, detail, uiSmallFace, x+36, y+58, detailColor)
+}
+
+func (a *App) drawMenuFooter(screen *ebiten.Image, x, y, width, height float64, accentText, lightText, inputFill color.RGBA) {
+	switch a.menu.selected {
+	case menuOptionSolo:
+		palette := paletteForTeamColor(a.menu.soloColor)
+		drawUIText(screen, "Solo team color", uiSmallFace, x+34, 552, accentText)
+		vectorX := x + 34.0
+		vectorY := 573.0
+		drawRoundedFill(screen, vectorX, vectorY, 26, 26, 10, palette.Primary)
+		drawUIText(screen, teamColorLabel(a.menu.soloColor), uiBodyFace, x+72, 570, lightText)
+		help := "Use Left and Right to change your solo team color before starting"
+		drawUIText(screen, help, uiSmallFace, x+34, 600, accentText)
+	case menuOptionHost:
+		drawUIText(screen, "Host Multiplayer", uiSmallFace, x+34, 552, accentText)
+		help := "Starts a local server and joins it from this client without exposing an address in the UI"
+		drawUIText(screen, help, uiSmallFace, x+34, 580, lightText)
+	case menuOptionJoin:
+		drawUIText(screen, "Server address", uiSmallFace, x+34, 552, accentText)
+		drawRoundedFill(screen, x+34, 570, width-68, 32, 10, inputFill)
+		if a.menu.joinAddr != "" {
+			drawUIText(screen, a.menu.joinAddr, uiSmallFace, x+48, 578, lightText)
+		}
+		help := "Type the address you want to join. Backspace deletes."
+		drawUIText(screen, help, uiSmallFace, x+34, 606, accentText)
+	}
 }
 
 func (a *App) startHostedRemote(listenAddr string) error {
@@ -257,11 +297,11 @@ func (a *App) startHostedRemote(listenAddr string) error {
 	}
 	a.hostServer = srv
 	a.hostServeErr = serveErr
-	a.remote = newRemoteGame(clientConn, joinAddr)
+	a.remote = newRemoteGame(clientConn)
 	a.solo = nil
 	a.screen = appScreenRemote
-	a.menu.status = fmt.Sprintf("Hosting on %s", srv.Addr())
-	ebiten.SetWindowTitle("Hockey 26 v2 - Host Multiplayer")
+	a.menu.status = "Hosting local server"
+	ebiten.SetWindowTitle("Go Hockey - Host Multiplayer")
 	return nil
 }
 
@@ -271,12 +311,12 @@ func (a *App) startRemote(addr string) error {
 	if err != nil {
 		return err
 	}
-	a.remote = newRemoteGame(clientConn, addr)
+	a.remote = newRemoteGame(clientConn)
 	a.solo = nil
 	a.screen = appScreenRemote
 	a.hostServeErr = nil
-	a.menu.status = fmt.Sprintf("Joined %s", addr)
-	ebiten.SetWindowTitle(fmt.Sprintf("Hockey 26 v2 - Online %s", strings.ToUpper(string(a.remote.localTeam))))
+	a.menu.status = "Connected to server"
+	ebiten.SetWindowTitle(fmt.Sprintf("Go Hockey - Online %s", strings.ToUpper(string(a.remote.localTeam))))
 	return nil
 }
 
@@ -291,7 +331,7 @@ func (a *App) returnToMenu(status string) {
 	if status != "" {
 		a.menu.status = status
 	}
-	ebiten.SetWindowTitle("Hockey 26 v2")
+	ebiten.SetWindowTitle("Go Hockey")
 }
 
 func (a *App) stopHostedServer() {
@@ -300,6 +340,29 @@ func (a *App) stopHostedServer() {
 		a.hostServer = nil
 	}
 	a.hostServeErr = nil
+}
+
+func nextLauncherColor(current sim.TeamColor, delta int) sim.TeamColor {
+	currentIndex := 0
+	for index, candidate := range launcherColorCycle {
+		if candidate == current {
+			currentIndex = index
+			break
+		}
+	}
+	nextIndex := (currentIndex + delta) % len(launcherColorCycle)
+	if nextIndex < 0 {
+		nextIndex += len(launcherColorCycle)
+	}
+	return launcherColorCycle[nextIndex]
+}
+
+func awayColorForSolo(home sim.TeamColor) sim.TeamColor {
+	away := nextLauncherColor(home, 1)
+	if away == home {
+		return sim.TeamColorRed
+	}
+	return away
 }
 
 func localJoinAddress(addr string) string {

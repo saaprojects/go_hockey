@@ -24,7 +24,7 @@ func main() {
 		state := sim.NewGameState()
 		sim.Step(&state, nil)
 		fmt.Printf(
-			"Hockey 26 v2 sim ready. tick=%d home=%d away=%d faceoff=%d puck=(%.0f, %.0f)\n",
+			"Go Hockey ready. tick=%d home=%d away=%d faceoff=%d puck=(%.0f, %.0f)\n",
 			state.Tick,
 			len(state.HomeSkaters),
 			len(state.AwaySkaters),
@@ -63,7 +63,7 @@ func runServer(listenAddr string) {
 		log.Fatal(err)
 	}
 	defer srv.Close()
-	log.Printf("Hockey 26 v2 server listening on %s", srv.Addr())
+	log.Printf("Go Hockey server listening on %s", srv.Addr())
 	if err := srv.Serve(); err != nil {
 		log.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func runHost(listenAddr string) {
 	}()
 
 	joinAddr := localJoinAddress(srv.Addr())
-	log.Printf("Hosting Hockey 26 v2 on %s", srv.Addr())
+	log.Printf("Hosting Go Hockey on %s", srv.Addr())
 	log.Printf("Local client joining %s", joinAddr)
 	time.Sleep(150 * time.Millisecond)
 

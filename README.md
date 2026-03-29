@@ -61,6 +61,8 @@ The first player to join gets `home`. The second gets `away`.
 
 ## Online lobby and intermission controls
 
+During the launcher, Solo Game also lets you choose your team color before the match starts.
+
 During the pregame ready screen:
 
 - `A` or `Left Arrow`: previous color
@@ -126,3 +128,5 @@ go run ./cmd/hockey-v2 -headless
 2. Use the same sim for solo, bot matches, and online play.
 3. Run multiplayer through a dedicated server process or `-host` mode.
 4. Replace the naive full-snapshot TCP path with prediction/interpolation once the baseline online loop feels good.
+
+

@@ -26,7 +26,7 @@ var (
 	colorNetMesh       = color.RGBA{0xd7, 0xe0, 0xe7, 0xff}
 	colorPuck          = color.RGBA{0x11, 0x12, 0x14, 0xff}
 	colorOverlay       = color.RGBA{0x08, 0x12, 0x20, 0xdd}
-	colorPanel         = color.RGBA{0xf2, 0xf7, 0xfc, 0xf0}
+	colorPanel         = color.RGBA{0xf2, 0xf7, 0xfc, 0xff}
 	colorPanelShadow   = color.RGBA{0x05, 0x0c, 0x15, 0x55}
 	colorTextDark      = color.RGBA{0x12, 0x1d, 0x2b, 0xff}
 )
@@ -38,13 +38,20 @@ type SoloGame struct {
 
 func RunSolo() error {
 	ebiten.SetWindowSize(int(sim.WindowWidth), int(sim.WindowHeight))
-	ebiten.SetWindowTitle("Hockey 26 v2 - Solo")
+	ebiten.SetWindowTitle("Go Hockey - Solo")
 	ebiten.SetTPS(sim.TickRate)
 	return ebiten.RunGame(NewSoloGame())
 }
 
 func NewSoloGame() *SoloGame {
-	return &SoloGame{state: sim.NewGameState()}
+	return NewSoloGameWithColors(sim.TeamColorBlue, sim.TeamColorRed)
+}
+
+func NewSoloGameWithColors(homeColor, awayColor sim.TeamColor) *SoloGame {
+	state := sim.NewGameState()
+	state.HomeColor = homeColor
+	state.AwayColor = awayColor
+	return &SoloGame{state: state}
 }
 
 func (g *SoloGame) Update() error {
@@ -52,7 +59,11 @@ func (g *SoloGame) Update() error {
 		g.paused = !g.paused
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyR) {
+		homeColor := g.state.HomeColor
+		awayColor := g.state.AwayColor
 		g.state = sim.NewGameState()
+		g.state.HomeColor = homeColor
+		g.state.AwayColor = awayColor
 		g.paused = false
 	}
 	if g.paused || g.state.GameOver {
@@ -235,7 +246,7 @@ func (g *SoloGame) drawHUD(screen *ebiten.Image) {
 	if g.state.GameOver {
 		status = "Game over  Press R to restart solo play"
 	}
-	ebitenutil.DebugPrintAt(screen, "Hockey 26 v2 Solo", 20, 18)
+	ebitenutil.DebugPrintAt(screen, "Go Hockey Solo", 20, 18)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%d - %d", g.state.Score.Home, g.state.Score.Away), int(sim.CenterX)-24, 20)
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf("%s %02d:%02d", periodLabel, minutes, seconds), 20, 42)
 	ebitenutil.DebugPrintAt(screen, status, 20, int(sim.WindowHeight)-28)
