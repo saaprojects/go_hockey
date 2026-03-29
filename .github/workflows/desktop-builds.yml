@@ -73,17 +73,9 @@ jobs:
           overwrite_files: true
 
   build-macos:
-    name: macOS App (${{ matrix.arch }})
+    name: macOS App (arm64)
     needs: prepare-release
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - runner: macos-15-intel
-            arch: amd64
-          - runner: macos-14
-            arch: arm64
+    runs-on: macos-14
 
     steps:
       - name: Check out repository
@@ -101,7 +93,7 @@ jobs:
         shell: bash
         env:
           GOOS: darwin
-          GOARCH: ${{ matrix.arch }}
+          GOARCH: arm64
           CGO_ENABLED: '1'
         run: |
           set -euo pipefail
@@ -144,7 +136,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.prepare-release.outputs.tag }}
-          files: dist/GoHockey-macos-${{ matrix.arch }}.zip
+          files: dist/GoHockey-macos-arm64.zip
           fail_on_unmatched_files: true
           overwrite_files: true
-
