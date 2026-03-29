@@ -2,9 +2,17 @@ name: Desktop Builds
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional tag to publish release assets to, like v0.1.0
+        required: false
+        type: string
   push:
     tags:
       - 'v*'
+
+permissions:
+  contents: write
 
 jobs:
   build-windows:
@@ -99,7 +107,6 @@ jobs:
           </dict>
           </plist>
           PLIST
-          /usr/bin/touch "$APP_DIR/Contents/PkgInfo"
           echo "APPL????" > "$APP_DIR/Contents/PkgInfo"
           go build -trimpath -ldflags="-s -w" -o "$APP_DIR/Contents/MacOS/GoHockey" ./hockey-v2
           chmod +x "$APP_DIR/Contents/MacOS/GoHockey"
@@ -111,3 +118,37 @@ jobs:
           name: GoHockey-macos-${{ matrix.arch }}
           path: dist/GoHockey-macos-${{ matrix.arch }}.zip
           if-no-files-found: error
+
+  publish-release:
+    name: Publish Release Assets
+    needs:
+      - build-windows
+      - build-macos
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.release_tag != ''
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: GoHockey-*
+          merge-multiple: true
+
+      - name: Resolve release tag
+        id: release_tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Attach assets to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_tag.outputs.tag }}
+          files: release-assets/*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
