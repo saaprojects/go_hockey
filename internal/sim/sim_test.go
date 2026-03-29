@@ -280,6 +280,12 @@ func TestPuckEnteringGoalMouthFromFrontScores(t *testing.T) {
 			current:  Vec2{X: HomeGoalLineX + 3, Y: CenterY + GoalHalfHeight + 4},
 			team:     TeamAway,
 		},
+		{
+			name:     "right goal front edge catches lower mouth",
+			previous: Vec2{X: AwayGoalLineX - 18, Y: CenterY + GoalHalfHeight + 18},
+			current:  Vec2{X: AwayGoalLineX - 3, Y: CenterY + GoalHalfHeight + 14},
+			team:     TeamHome,
+		},
 	}
 
 	for _, tc := range tests {
@@ -387,6 +393,27 @@ func TestCarriedPuckBehindNetStaysOutOfGoalPocket(t *testing.T) {
 	}
 	if state.Score.Home != 0 {
 		t.Fatalf("expected no goal from a behind-net carry, got %+v", state.Score)
+	}
+}
+
+func TestSkaterInsideGoalPocketGetsPushedOut(t *testing.T) {
+	state := NewGameState()
+	state.FaceoffTicks = 0
+	state.HomeControlled = 1
+	skater := &state.HomeSkaters[state.HomeControlled]
+	skater.Position = Vec2{X: AwayGoalLineX + GoalDepth*0.55, Y: CenterY}
+	skater.Velocity = Vec2{X: -180, Y: 0}
+	state.Puck.CarrierID = ""
+	state.Puck.Position = Vec2{X: CenterX, Y: CenterY}
+	state.Puck.Velocity = Vec2{}
+	for index := range state.AwaySkaters {
+		state.AwaySkaters[index].Position = Vec2{X: CenterX + 180, Y: CenterY - 120 + float64(index)*120.0}
+	}
+
+	Step(&state, []InputFrame{{Team: TeamHome}})
+
+	if pointInsideGoal(skater.Position, false) {
+		t.Fatalf("expected skater to be pushed out of the right goal pocket, got %#v", skater.Position)
 	}
 }
 

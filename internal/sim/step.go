@@ -744,7 +744,23 @@ func pokeOrBodyCheck(state *GameState, skater *SkaterState) {
 
 func containSkater(state *GameState, skater *SkaterState) {
 	skater.Position = constrainToRink(skater.Position, skater.Radius+4.0)
-	skater.Position, _, _ = pushCircleOutOfGoalFrames(skater.Position, skater.Radius+2.0, true)
+	combinedNormal := Vec2{}
+	framePosition, frameNormal, frameHit := pushCircleOutOfGoalFrames(skater.Position, skater.Radius+2.0, true)
+	if frameHit {
+		skater.Position = framePosition
+		combinedNormal = combinedNormal.Add(frameNormal)
+	}
+	interiorPosition, interiorNormal, interiorHit := pushCircleOutOfGoalInterior(skater.Position, skater.Radius+2.0)
+	if interiorHit {
+		skater.Position = interiorPosition
+		combinedNormal = combinedNormal.Add(interiorNormal)
+	}
+	if normal := combinedNormal.Normalized(); normal.Length() > 1e-6 {
+		dot := skater.Velocity.Dot(normal)
+		if dot < 0.0 {
+			skater.Velocity = skater.Velocity.Sub(normal.Mul(dot * 1.1))
+		}
+	}
 	for _, goalie := range []*GoalieState{&state.HomeGoalie, &state.AwayGoalie} {
 		displacement := skater.Position.Sub(goalie.Position)
 		minimum := skater.Radius + goalie.Radius + 4.0
@@ -929,68 +945,82 @@ func findPickupSkater(state *GameState) *SkaterState {
 }
 
 func checkGoalScored(previousPosition, position Vec2) (Team, bool) {
-	if enteredGoalMouth(previousPosition, position, false) {
+	if enteredGoalMouth(previousPosition, position, GoalScorePuckRadius, false) {
 		return TeamHome, true
 	}
-	if enteredGoalMouth(previousPosition, position, true) {
+	if enteredGoalMouth(previousPosition, position, GoalScorePuckRadius, true) {
 		return TeamAway, true
 	}
 	return TeamNone, false
 }
 
-func enteredGoalMouth(previousPosition, position Vec2, leftGoal bool) bool {
+func enteredGoalMouth(previousPosition, position Vec2, puckRadius float64, leftGoal bool) bool {
 	goalX, _, goalTop, goalBottom, _, _ := goalFrameGeometry(leftGoal)
 	if positionBehindGoalLine(previousPosition, leftGoal, goalX) {
 		return false
 	}
 
-	top, bottom := scoringMouthBounds(goalTop, goalBottom)
-	if crossedGoalPlane(previousPosition, position, goalX, leftGoal) {
-		deltaX := position.X - previousPosition.X
-		progress := (goalX - previousPosition.X) / deltaX
+	top, bottom := scoringMouthBounds(goalTop, goalBottom, puckRadius)
+	if crossedGoalPlane(previousPosition, position, goalX, leftGoal, puckRadius) {
+		previousFrontX := goalFrontX(previousPosition, leftGoal, puckRadius)
+		currentFrontX := goalFrontX(position, leftGoal, puckRadius)
+		deltaX := currentFrontX - previousFrontX
+		if math.Abs(deltaX) < 1e-6 {
+			return false
+		}
+		progress := (goalX - previousFrontX) / deltaX
 		crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
 		return crossY >= top && crossY <= bottom
 	}
 
-	if !positionOnGoalFace(position, leftGoal, goalX) {
+	if !positionOnGoalFace(position, leftGoal, goalX, puckRadius) {
 		return false
 	}
 	if !positionWithinScoringMouth(position, top, bottom) {
 		return false
 	}
-	if !positionOnGoalFace(previousPosition, leftGoal, goalX) {
+	if !positionOnGoalFace(previousPosition, leftGoal, goalX, puckRadius) {
 		return true
 	}
 	return !positionWithinScoringMouth(previousPosition, top, bottom)
 }
 
-func scoringMouthBounds(goalTop, goalBottom float64) (float64, float64) {
-	return goalTop - GoalScorePostPad, goalBottom + GoalScorePostPad
+func scoringMouthBounds(goalTop, goalBottom, puckRadius float64) (float64, float64) {
+	return goalTop - GoalScorePostPad - puckRadius, goalBottom + GoalScorePostPad + puckRadius
 }
 
-func crossedGoalPlane(previousPosition, position Vec2, goalX float64, leftGoal bool) bool {
-	deltaX := position.X - previousPosition.X
+func crossedGoalPlane(previousPosition, position Vec2, goalX float64, leftGoal bool, puckRadius float64) bool {
+	previousFrontX := goalFrontX(previousPosition, leftGoal, puckRadius)
+	currentFrontX := goalFrontX(position, leftGoal, puckRadius)
+	deltaX := currentFrontX - previousFrontX
 	if math.Abs(deltaX) < 1e-6 {
 		return false
 	}
 	if leftGoal {
-		if previousPosition.X < goalX || position.X > goalX {
+		if previousFrontX < goalX || currentFrontX > goalX {
 			return false
 		}
 	} else {
-		if previousPosition.X > goalX || position.X < goalX {
+		if previousFrontX > goalX || currentFrontX < goalX {
 			return false
 		}
 	}
-	progress := (goalX - previousPosition.X) / deltaX
+	progress := (goalX - previousFrontX) / deltaX
 	return progress >= 0.0 && progress <= 1.0
 }
 
-func positionOnGoalFace(position Vec2, leftGoal bool, goalX float64) bool {
+func goalFrontX(position Vec2, leftGoal bool, puckRadius float64) float64 {
 	if leftGoal {
-		return position.X <= goalX+GoalScoreDepthPad
+		return position.X - puckRadius
 	}
-	return position.X >= goalX-GoalScoreDepthPad
+	return position.X + puckRadius
+}
+
+func positionOnGoalFace(position Vec2, leftGoal bool, goalX, puckRadius float64) bool {
+	if leftGoal {
+		return position.X <= goalX+GoalScoreDepthPad+puckRadius
+	}
+	return position.X >= goalX-GoalScoreDepthPad-puckRadius
 }
 
 func positionWithinScoringMouth(position Vec2, top, bottom float64) bool {

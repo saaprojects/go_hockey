@@ -39,14 +39,15 @@ const (
 )
 
 const (
-	PlayerPassSpeed   = 540.0
-	PlayerShotSpeed   = PlayerPassSpeed * 2.0
-	AIShotSpeed       = PlayerPassSpeed * 1.85
-	GoalieReachBuffer = 28.0
-	ShotTargetMargin  = 10.0
-	GoalTrapFaceoff   = 3.0
-	GoalScoreDepthPad = 7.0
-	GoalScorePostPad  = 8.0
+	PlayerPassSpeed     = 540.0
+	PlayerShotSpeed     = PlayerPassSpeed * 2.0
+	AIShotSpeed         = PlayerPassSpeed * 1.85
+	GoalieReachBuffer   = 28.0
+	ShotTargetMargin    = 10.0
+	GoalTrapFaceoff     = 3.0
+	GoalScoreDepthPad   = 7.0
+	GoalScorePostPad    = 8.0
+	GoalScorePuckRadius = 8.0
 )
 
 type TeamTuning struct {

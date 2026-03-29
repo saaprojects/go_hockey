@@ -44,6 +44,8 @@ func NewApp() *App {
 }
 
 func (a *App) Close() error {
+	a.stopMenuMusic()
+	a.stopMatchAmbience()
 	if a.remote != nil {
 		_ = a.remote.Close()
 	}
@@ -55,12 +57,36 @@ func (a *App) Close() error {
 	return nil
 }
 
+func (a *App) stopMatchAmbience() {
+	if a.solo != nil && a.solo.sounds != nil {
+		a.solo.sounds.StopArenaAmbience()
+	}
+	if a.remote != nil && a.remote.sounds != nil {
+		a.remote.sounds.StopArenaAmbience()
+	}
+}
+
+func (a *App) stopMenuMusic() {
+	defaultSoundboard().StopMenuMusic()
+}
+
+func (a *App) syncScreenAudio() {
+	sounds := defaultSoundboard()
+	switch a.screen {
+	case appScreenSolo, appScreenRemote:
+		sounds.StopMenuMusic()
+	default:
+		sounds.PlayMenuMusic()
+	}
+}
+
 func (a *App) Layout(outsideWidth, outsideHeight int) (int, int) {
 	return int(sim.WindowWidth), int(sim.WindowHeight)
 }
 
 func (a *App) Update() error {
 	a.pollDiscoveryUpdates()
+	a.syncScreenAudio()
 	switch a.screen {
 	case appScreenSolo:
 		if err := a.solo.Update(); err != nil {
@@ -368,6 +394,7 @@ func (a *App) startRemote(addr string) error {
 }
 
 func (a *App) returnToMenu(status string) {
+	a.stopMatchAmbience()
 	if a.remote != nil {
 		_ = a.remote.Close()
 	}
@@ -381,6 +408,7 @@ func (a *App) returnToMenu(status string) {
 }
 
 func (a *App) returnToRoomMenu(status string) {
+	a.stopMatchAmbience()
 	if a.remote != nil {
 		_ = a.remote.Close()
 	}
@@ -429,4 +457,3 @@ func (a *App) joinRoomAtCursor() (int, bool) {
 	}
 	return 0, false
 }
-

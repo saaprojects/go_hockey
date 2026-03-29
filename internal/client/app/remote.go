@@ -46,6 +46,9 @@ func newRemoteGame(clientConn *netcode.Client) *RemoteGame {
 }
 
 func (g *RemoteGame) Close() error {
+	if g.sounds != nil {
+		g.sounds.StopArenaAmbience()
+	}
 	if g.client == nil {
 		return nil
 	}
@@ -63,6 +66,9 @@ func (g *RemoteGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *RemoteGame) Update() error {
+	if g.sounds != nil {
+		g.sounds.PlayArenaAmbience()
+	}
 	for {
 		select {
 		case snapshot := <-g.client.Snapshots():

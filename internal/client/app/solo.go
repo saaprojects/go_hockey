@@ -40,6 +40,9 @@ func (g *SoloGame) Layout(outsideWidth, outsideHeight int) (int, int) {
 }
 
 func (g *SoloGame) Update() error {
+	if g.sounds != nil {
+		g.sounds.PlayArenaAmbience()
+	}
 	g.syncMenuState()
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		if g.menu.Mode == matchMenuModePause {
@@ -51,6 +54,9 @@ func (g *SoloGame) Update() error {
 	if g.menu.Visible() {
 		g.updateMatchMenu()
 		if g.standalone && g.action != matchMenuActionNone {
+			if g.sounds != nil {
+				g.sounds.StopArenaAmbience()
+			}
 			return ebiten.Termination
 		}
 		return nil
@@ -67,6 +73,9 @@ func (g *SoloGame) Update() error {
 	sim.Step(&g.state, []sim.InputFrame{input})
 	playMatchStateSounds(g.sounds, previousState, g.state)
 	if g.standalone && g.action != matchMenuActionNone {
+		if g.sounds != nil {
+			g.sounds.StopArenaAmbience()
+		}
 		return ebiten.Termination
 	}
 	return nil

@@ -1,28 +1,57 @@
 package app
 
 import (
+	"math/rand"
 	"testing"
-	"time"
 
 	"hockeyv2/internal/sim"
 )
 
-func TestTonePCMAndConcatPCM(t *testing.T) {
-	first := tonePCM(440, 660, 80*time.Millisecond, 0.2)
-	second := tonePCM(660, 880, 40*time.Millisecond, 0.15)
-	if len(first) == 0 || len(second) == 0 {
-		t.Fatalf("expected generated PCM clips to be non-empty")
+func TestGoalSoundAssetPathsPreferGenericColorNames(t *testing.T) {
+	cases := map[sim.TeamColor]string{
+		sim.TeamColorBlack:  "sounds/goal_black.wav",
+		sim.TeamColorOrange: "sounds/goal_orange.wav",
+		sim.TeamColorGreen:  "sounds/goal_green.wav",
+		sim.TeamColorBlue:   "sounds/goal_blue.wav",
+		sim.TeamColorRed:    "sounds/goal_red.wav",
 	}
-	if len(first)%4 != 0 || len(second)%4 != 0 {
-		t.Fatalf("expected stereo 16-bit PCM clips, got %d and %d bytes", len(first), len(second))
-	}
-	joined := concatPCM(first, second)
-	if len(joined) != len(first)+len(second) {
-		t.Fatalf("expected concatenated clip length %d, got %d", len(first)+len(second), len(joined))
+	for color, want := range cases {
+		paths := goalSoundAssetPaths(color)
+		if len(paths) == 0 || paths[0] != want {
+			t.Fatalf("expected first asset path for %q to be %q, got %+v", color, want, paths)
+		}
 	}
 }
 
-func TestNewSoundboardLoadsGoalSoundsForAllTeamColors(t *testing.T) {
+func TestArenaAmbientAssetPathsPreferGenericName(t *testing.T) {
+	paths := arenaAmbientAssetPaths()
+	if len(paths) == 0 || paths[0] != "sounds/arena_ambient.mp3" {
+		t.Fatalf("expected generic arena ambience path first, got %+v", paths)
+	}
+}
+
+func TestListMenuMusicAssetPathsFindsBundledTracks(t *testing.T) {
+	paths := listMenuMusicAssetPaths()
+	if len(paths) == 0 {
+		t.Fatalf("expected bundled launcher music tracks")
+	}
+	for _, assetPath := range paths {
+		if !supportedMusicAssetPath(assetPath) {
+			t.Fatalf("expected supported music asset path, got %q", assetPath)
+		}
+	}
+}
+
+func TestChooseRandomMenuMusicPathAvoidsImmediateRepeatWhenPossible(t *testing.T) {
+	paths := []string{"music/EDM/a.mp3", "music/Emo/b.wav", "music/Metal/c.mp3"}
+	random := rand.New(rand.NewSource(1))
+	got := chooseRandomMenuMusicPath(paths, random, "music/EDM/a.mp3")
+	if got == "music/EDM/a.mp3" {
+		t.Fatalf("expected a different track than the previous selection, got %q", got)
+	}
+}
+
+func TestNewSoundboardLoadsGoalSoundsAndMenuAudio(t *testing.T) {
 	soundboard := newSoundboard()
 	for _, teamColor := range []sim.TeamColor{sim.TeamColorBlack, sim.TeamColorOrange, sim.TeamColorGreen, sim.TeamColorBlue, sim.TeamColorRed} {
 		clip := soundboard.goalClips[teamColor]
@@ -30,16 +59,21 @@ func TestNewSoundboardLoadsGoalSoundsForAllTeamColors(t *testing.T) {
 			t.Fatalf("expected goal sound clip for %q", teamColor)
 		}
 	}
+	if len(soundboard.ambientClip) == 0 {
+		t.Fatalf("expected arena ambient clip to load")
+	}
+	if len(soundboard.menuMusicPaths) == 0 {
+		t.Fatalf("expected launcher music paths to load")
+	}
 }
 
-func TestGoalHornPCMIsLongerThanFaceoffChirp(t *testing.T) {
+func TestGoalHornPCMIsNonEmptyStereoPCM(t *testing.T) {
 	goal := goalHornPCM()
-	faceoff := tonePCM(560, 430, 85*time.Millisecond, 0.18)
-	if len(goal) == 0 || len(faceoff) == 0 {
-		t.Fatalf("expected generated sound clips to be non-empty")
+	if len(goal) == 0 {
+		t.Fatalf("expected goal horn to be non-empty")
 	}
-	if len(goal) <= len(faceoff) {
-		t.Fatalf("expected goal horn to be longer than faceoff chirp, got %d <= %d", len(goal), len(faceoff))
+	if len(goal)%4 != 0 {
+		t.Fatalf("expected stereo 16-bit PCM clip, got %d bytes", len(goal))
 	}
 }
 
