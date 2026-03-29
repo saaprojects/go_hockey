@@ -105,7 +105,7 @@ func TestDialAcceptsJoinAndStreamsSnapshots(t *testing.T) {
 			t.Errorf("unexpected join metadata %+v", join)
 			return
 		}
-		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-AB12C", RoomCode: "AB12C", RoomName: "Friday Night", ClientID: "client-1", Team: sim.TeamAway, State: &initial}); err != nil {
+		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-AB12C", RoomCode: "AB12C", RoomName: "Friday Night", ClientID: "client-1", Team: sim.TeamAway, Host: true, State: &initial}); err != nil {
 			t.Errorf("encode join accepted: %v", err)
 			return
 		}
@@ -188,7 +188,7 @@ func TestClientSendInputUsesAssignedIdentity(t *testing.T) {
 			t.Errorf("decode join: %v", err)
 			return
 		}
-		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-ZXCVB", RoomCode: "ZXCVB", ClientID: "client-2", Team: sim.TeamAway}); err != nil {
+		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-ZXCVB", RoomCode: "ZXCVB", ClientID: "client-2", Team: sim.TeamAway, Host: false}); err != nil {
 			t.Errorf("encode accepted: %v", err)
 			return
 		}
@@ -312,3 +312,4 @@ func TestClientReadLoopStopsAfterClose(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
