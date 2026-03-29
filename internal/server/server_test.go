@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-func TestFirstTwoClientsGetHomeAndAway(t *testing.T) {
+func startTestServer(t *testing.T) (*Server, chan error) {
+	t.Helper()
 	srv, err := Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -19,15 +20,23 @@ func TestFirstTwoClientsGetHomeAndAway(t *testing.T) {
 	go func() {
 		serveDone <- srv.Serve()
 	}()
-	defer func() {
-		_ = srv.Close()
-		select {
-		case <-serveDone:
-		case <-time.After(500 * time.Millisecond):
-		}
-	}()
-
 	time.Sleep(40 * time.Millisecond)
+	return srv, serveDone
+}
+
+func stopTestServer(t *testing.T, srv *Server, serveDone chan error) {
+	t.Helper()
+	_ = srv.Close()
+	select {
+	case <-serveDone:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatalf("timed out waiting for server shutdown")
+	}
+}
+
+func TestDefaultRoomFirstTwoClientsGetHomeAndAway(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
 
 	clientA, err := netcode.Dial(srv.Addr())
 	if err != nil {
@@ -49,24 +58,9 @@ func TestFirstTwoClientsGetHomeAndAway(t *testing.T) {
 	}
 }
 
-func TestThirdClientIsRejectedWhenMatchIsFull(t *testing.T) {
-	srv, err := Listen("127.0.0.1:0")
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	serveDone := make(chan error, 1)
-	go func() {
-		serveDone <- srv.Serve()
-	}()
-	defer func() {
-		_ = srv.Close()
-		select {
-		case <-serveDone:
-		case <-time.After(500 * time.Millisecond):
-		}
-	}()
-
-	time.Sleep(40 * time.Millisecond)
+func TestDefaultRoomThirdClientIsRejectedWhenFull(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
 
 	clientA, err := netcode.Dial(srv.Addr())
 	if err != nil {
@@ -87,22 +81,99 @@ func TestThirdClientIsRejectedWhenMatchIsFull(t *testing.T) {
 	}
 }
 
-func TestNextOpenTeamLocked(t *testing.T) {
-	srv := &Server{teamOwners: map[sim.Team]string{}}
-	if team, ok := srv.nextOpenTeamLocked(); !ok || team != sim.TeamHome {
-		t.Fatalf("expected home to open first, got team=%q ok=%v", team, ok)
+func TestCreateRoomAssignsCodeAndJoinByCodeWorks(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
+
+	host, err := netcode.DialRoom(srv.Addr(), "", true, "Friday Night")
+	if err != nil {
+		t.Fatalf("create room: %v", err)
 	}
-	srv.teamOwners[sim.TeamHome] = "client-1"
-	if team, ok := srv.nextOpenTeamLocked(); !ok || team != sim.TeamAway {
-		t.Fatalf("expected away to open second, got team=%q ok=%v", team, ok)
+	defer host.Close()
+
+	if host.Team() != sim.TeamHome {
+		t.Fatalf("expected room creator to be home, got %q", host.Team())
 	}
-	srv.teamOwners[sim.TeamAway] = "client-2"
-	if team, ok := srv.nextOpenTeamLocked(); ok || team != sim.TeamNone {
-		t.Fatalf("expected no open teams, got team=%q ok=%v", team, ok)
+	if len(host.RoomCode()) != onlineCodeLength {
+		t.Fatalf("expected generated %d-char room code, got %q", onlineCodeLength, host.RoomCode())
+	}
+	if host.RoomName() != "Friday Night" {
+		t.Fatalf("expected room name to round-trip, got %q", host.RoomName())
+	}
+
+	joiner, err := netcode.DialRoom(srv.Addr(), host.RoomCode(), false, "")
+	if err != nil {
+		t.Fatalf("join room by code: %v", err)
+	}
+	defer joiner.Close()
+
+	if joiner.Team() != sim.TeamAway {
+		t.Fatalf("expected room joiner to be away, got %q", joiner.Team())
+	}
+	if joiner.RoomCode() != host.RoomCode() {
+		t.Fatalf("expected joined room code %q, got %q", host.RoomCode(), joiner.RoomCode())
 	}
 }
 
-func TestSetLobbyColorsUpdatesState(t *testing.T) {
+func TestJoinMissingRoomIsRejected(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
+
+	client, err := netcode.DialRoom(srv.Addr(), "ABCDE", false, "")
+	if err == nil {
+		client.Close()
+		t.Fatalf("expected missing room join to fail")
+	}
+	if err.Error() != "room not found" {
+		t.Fatalf("unexpected missing room error %v", err)
+	}
+}
+
+func TestDifferentRoomsDoNotShareCapacity(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
+
+	roomAHost, err := netcode.DialRoom(srv.Addr(), "", true, "Room A")
+	if err != nil {
+		t.Fatalf("create room A: %v", err)
+	}
+	defer roomAHost.Close()
+
+	roomBHost, err := netcode.DialRoom(srv.Addr(), "", true, "Room B")
+	if err != nil {
+		t.Fatalf("create room B: %v", err)
+	}
+	defer roomBHost.Close()
+
+	roomAJoiner, err := netcode.DialRoom(srv.Addr(), roomAHost.RoomCode(), false, "")
+	if err != nil {
+		t.Fatalf("join room A: %v", err)
+	}
+	defer roomAJoiner.Close()
+
+	thirdInA, err := netcode.DialRoom(srv.Addr(), roomAHost.RoomCode(), false, "")
+	if err == nil {
+		thirdInA.Close()
+		t.Fatalf("expected room A to be full")
+	}
+
+	roomBJoiner, err := netcode.DialRoom(srv.Addr(), roomBHost.RoomCode(), false, "")
+	if err != nil {
+		t.Fatalf("join room B: %v", err)
+	}
+	defer roomBJoiner.Close()
+}
+
+func TestNormalizeRoomCode(t *testing.T) {
+	if got := normalizeRoomCode(" ab-12cdef "); got != "AB2CD" {
+		t.Fatalf("unexpected normalized room code %q", got)
+	}
+	if got := normalizeRoomCode("   "); got != defaultRoomCode {
+		t.Fatalf("expected blank room code to normalize to default room, got %q", got)
+	}
+}
+
+func TestSetLobbyColorsUpdatesDefaultRoomState(t *testing.T) {
 	srv, err := Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -110,8 +181,9 @@ func TestSetLobbyColorsUpdatesState(t *testing.T) {
 	defer srv.Close()
 
 	srv.SetLobbyColors(sim.TeamColorOrange, sim.TeamColorBlue)
-	if srv.state.HomeColor != sim.TeamColorOrange || srv.state.AwayColor != sim.TeamColorBlue {
-		t.Fatalf("unexpected lobby colors home=%q away=%q", srv.state.HomeColor, srv.state.AwayColor)
+	room := srv.ensureRoomLocked(defaultRoomCode, "")
+	if room.state.HomeColor != sim.TeamColorOrange || room.state.AwayColor != sim.TeamColorBlue {
+		t.Fatalf("unexpected lobby colors home=%q away=%q", room.state.HomeColor, room.state.AwayColor)
 	}
 }
 
@@ -125,20 +197,47 @@ func TestServerCloneGameStateCopiesSlices(t *testing.T) {
 	}
 }
 
-func TestStepAndSnapshotUsesOwnedTeamInputs(t *testing.T) {
+func TestStepAndSnapshotAdvancesEachRoom(t *testing.T) {
+	defaultState := sim.NewMultiplayerGameState()
+	customState := sim.NewMultiplayerGameState()
 	srv := &Server{
-		state:        sim.NewMultiplayerGameState(),
-		clients:      map[string]*serverClient{"client-1": {id: "client-1"}, "client-2": {id: "client-2"}},
-		teamOwners:   map[sim.Team]string{sim.TeamHome: "client-1", sim.TeamAway: "client-2"},
-		currentInput: map[sim.Team]sim.InputFrame{sim.TeamHome: {Move: sim.Vec2{X: 1}}, sim.TeamAway: {Move: sim.Vec2{X: -1}}},
+		rooms: map[string]*matchRoom{
+			defaultRoomCode: {
+				code:         defaultRoomCode,
+				state:        defaultState,
+				teamOwners:   map[sim.Team]string{sim.TeamHome: "client-1"},
+				currentInput: map[sim.Team]sim.InputFrame{sim.TeamHome: {Move: sim.Vec2{X: 1}}},
+			},
+			"ABCDE": {
+				code:         "ABCDE",
+				name:         "Friday Night",
+				state:        customState,
+				teamOwners:   map[sim.Team]string{sim.TeamHome: "client-2"},
+				currentInput: map[sim.Team]sim.InputFrame{sim.TeamHome: {Move: sim.Vec2{X: -1}}},
+			},
+		},
+		clients: map[string]*serverClient{
+			"client-1": {id: "client-1"},
+			"client-2": {id: "client-2"},
+		},
 	}
-	startTick := srv.state.Tick
-	snapshot, clients := srv.stepAndSnapshot()
-	if snapshot.Tick != startTick+1 {
-		t.Fatalf("expected snapshot tick %d, got %d", startTick+1, snapshot.Tick)
+
+	fanouts := srv.stepAndSnapshot()
+	if len(fanouts) != 2 {
+		t.Fatalf("expected fanout for both rooms, got %d", len(fanouts))
 	}
-	if len(clients) != 2 {
-		t.Fatalf("expected 2 clients in snapshot fanout, got %d", len(clients))
+	seen := map[string]bool{}
+	for _, fanout := range fanouts {
+		seen[fanout.roomCode] = true
+		if fanout.snapshot.Tick != 1 {
+			t.Fatalf("expected stepped tick 1 for room %q, got %d", fanout.roomCode, fanout.snapshot.Tick)
+		}
+		if len(fanout.clients) != 1 {
+			t.Fatalf("expected one client for room %q, got %d", fanout.roomCode, len(fanout.clients))
+		}
+	}
+	if !seen[defaultRoomCode] || !seen["ABCDE"] {
+		t.Fatalf("expected snapshots for default and custom rooms, got %+v", seen)
 	}
 }
 

@@ -33,6 +33,13 @@ type JoinBrowserModel struct {
 	Status       string
 }
 
+type OnlineRoomModel struct {
+	RoomName     string
+	RoomCode     string
+	FocusedField int
+	Status       string
+}
+
 type JoinRoomCard struct {
 	Index int
 	Area  ui.Rect
@@ -46,18 +53,19 @@ func DrawLauncherMenu(screen *ebiten.Image, model LauncherMenuModel) {
 	ui.DrawGlow(screen, hero, 24, ui.WithAlpha(ui.AccentSoftColor, 66))
 	ui.DrawRoundedPanel(screen, hero, 24, ui.PanelShadowColor, ui.PanelStrokeBrightColor, ui.PanelColor)
 	ui.DrawTextCentered(screen, "GO HOCKEY", ui.DisplayFace(), sim.CenterX, hero.Y+24, ui.TextLightColor)
-	ui.DrawTextCentered(screen, "Arcade-style hockey for solo or local LAN play", ui.BodyFace(), sim.CenterX, 128, ui.TextDarkColor)
+	ui.DrawTextCentered(screen, "Arcade-style hockey for solo, LAN, or internet play", ui.BodyFace(), sim.CenterX, 128, ui.TextDarkColor)
 	ui.DrawTextCentered(screen, "Click a mode card to continue. Keyboard still works if you want it.", ui.SmallFace(), sim.CenterX, 152, ui.TextMutedColor)
 
 	cursorX, cursorY := ebiten.CursorPosition()
-	labels := []string{"Solo Game", "Host Multiplayer", "Join Multiplayer"}
+	labels := []string{"Solo Game", "Host Multiplayer", "Join Multiplayer", "Online Rooms"}
 	details := []string{
 		"Play against AI locally with one keyboard.",
 		"Start a LAN server and jump in from this client.",
 		"Browse rooms on your network and join with one click.",
+		"Create a named room or join by 5-character room code.",
 	}
 	for index, label := range labels {
-		area := MenuOptionRect(index)
+		area := MenuOptionRect(index, len(labels))
 		hovered := ui.PointInRect(float64(cursorX), float64(cursorY), area)
 		drawMenuOptionCard(screen, area, index, label, details[index], model.SelectedOption == index, hovered)
 	}
@@ -141,6 +149,47 @@ func DrawJoinBrowser(screen *ebiten.Image, model JoinBrowserModel) {
 	ui.DrawTextCentered(screen, status, ui.SmallFace(), sim.CenterX, footer.Y+10, ui.TextSoftColor)
 }
 
+func DrawOnlineRoom(screen *ebiten.Image, model OnlineRoomModel) {
+	screen.Fill(colorHUDBackground)
+	drawRinkBackdrop(screen)
+
+	panel := OnlineRoomPanelRect()
+	ui.DrawGlow(screen, panel, 28, ui.WithAlpha(ui.AccentSoftColor, 60))
+	ui.DrawRoundedPanel(screen, panel, 30, ui.PanelShadowColor, ui.PanelStrokeColor, ui.PanelColor)
+
+	header := ui.Rect{X: panel.X + 28, Y: panel.Y + 20, W: panel.W - 56, H: 64}
+	ui.DrawRoundedPanel(screen, header, 22, color.RGBA{0, 0, 0, 0}, ui.PanelStrokeBrightColor, ui.PanelAltColor)
+	ui.DrawTextCentered(screen, "ONLINE ROOMS", ui.DisplayFace(), sim.CenterX, header.Y+18, ui.TextLightColor)
+	ui.DrawTextCentered(screen, "Create a room, share the code, or join with the code a friend gives you.", ui.BodyFace(), sim.CenterX, panel.Y+104, ui.TextSoftColor)
+
+	cursorX, cursorY := ebiten.CursorPosition()
+	createFocused := model.FocusedField == 0
+	joinFocused := model.FocusedField == 1
+
+	createCard := OnlineRoomCreateCardRect()
+	drawOnlineRoomCard(screen, createCard, "Create Online Room", "Start a room, become the host, and we will generate a code for your friend.", createFocused)
+	ui.DrawInputField(screen, OnlineRoomNameFieldRect(), "Room Name", model.RoomName, "Weekend Session", createFocused)
+	createButton := OnlineRoomCreateButtonRect()
+	ui.DrawOverlayButton(screen, createButton, "Create Room", ui.PointInRect(float64(cursorX), float64(cursorY), createButton), true)
+
+	joinCard := OnlineRoomJoinCardRect()
+	drawOnlineRoomCard(screen, joinCard, "Join by Room Code", "Enter the 5-character code and jump straight into that room.", joinFocused)
+	ui.DrawInputField(screen, OnlineRoomCodeFieldRect(), "Room Code", model.RoomCode, "ABCDE", joinFocused)
+	joinButton := OnlineRoomJoinButtonRect()
+	ui.DrawOverlayButton(screen, joinButton, "Join Room", ui.PointInRect(float64(cursorX), float64(cursorY), joinButton), true)
+
+	backRect := OnlineRoomBackRect()
+	ui.DrawOverlayButton(screen, backRect, "Back", ui.PointInRect(float64(cursorX), float64(cursorY), backRect), false)
+
+	statusRect := OnlineRoomStatusRect()
+	ui.DrawRoundedPanel(screen, statusRect, 18, color.RGBA{0, 0, 0, 0}, ui.WithAlpha(ui.PanelStrokeColor, 170), ui.PanelInsetColor)
+	status := model.Status
+	if status == "" {
+		status = "Tab switches fields. Enter creates or joins. Esc goes back."
+	}
+	ui.DrawTextCentered(screen, status, ui.SmallFace(), statusRect.X+statusRect.W/2, statusRect.Y+11, ui.TextSoftColor)
+}
+
 func LaunchSetupPanelRect() ui.Rect {
 	return ui.Rect{X: sim.CenterX - 336, Y: 192, W: 672, H: 300}
 }
@@ -160,12 +209,58 @@ func LaunchSetupConfirmRect() ui.Rect {
 	return ui.Rect{X: panel.X + panel.W - 182, Y: panel.Y + 220, W: 150, H: 40}
 }
 
-func MenuOptionRect(index int) ui.Rect {
+func OnlineRoomPanelRect() ui.Rect {
+	return ui.Rect{X: sim.CenterX - 352, Y: 58, W: 704, H: 548}
+}
+
+func OnlineRoomCreateCardRect() ui.Rect {
+	panel := OnlineRoomPanelRect()
+	return ui.Rect{X: panel.X + 28, Y: panel.Y + 142, W: panel.W - 56, H: 150}
+}
+
+func OnlineRoomJoinCardRect() ui.Rect {
+	panel := OnlineRoomPanelRect()
+	return ui.Rect{X: panel.X + 28, Y: panel.Y + 308, W: panel.W - 56, H: 150}
+}
+
+func OnlineRoomNameFieldRect() ui.Rect {
+	card := OnlineRoomCreateCardRect()
+	return ui.Rect{X: card.X + 20, Y: card.Y + 64, W: card.W - 218, H: 70}
+}
+
+func OnlineRoomCodeFieldRect() ui.Rect {
+	card := OnlineRoomJoinCardRect()
+	return ui.Rect{X: card.X + 20, Y: card.Y + 64, W: card.W - 218, H: 70}
+}
+
+func OnlineRoomCreateButtonRect() ui.Rect {
+	card := OnlineRoomCreateCardRect()
+	return ui.Rect{X: card.X + card.W - 168, Y: card.Y + 85, W: 144, H: 44}
+}
+
+func OnlineRoomJoinButtonRect() ui.Rect {
+	card := OnlineRoomJoinCardRect()
+	return ui.Rect{X: card.X + card.W - 168, Y: card.Y + 85, W: 144, H: 44}
+}
+
+func OnlineRoomBackRect() ui.Rect {
+	panel := OnlineRoomPanelRect()
+	return ui.Rect{X: panel.X + 28, Y: panel.Y + panel.H - 70, W: 140, H: 42}
+}
+
+func OnlineRoomStatusRect() ui.Rect {
+	panel := OnlineRoomPanelRect()
+	back := OnlineRoomBackRect()
+	return ui.Rect{X: back.X + back.W + 18, Y: back.Y, W: panel.X + panel.W - (back.X + back.W + 18) - 28, H: 42}
+}
+
+func MenuOptionRect(index, optionCount int) ui.Rect {
 	cardX := sim.CenterX - 308.0
-	cardY := 184.0
 	cardWidth := 616.0
-	cardHeight := 92.0
-	gap := 18.0
+	cardHeight := 78.0
+	gap := 14.0
+	blockHeight := float64(optionCount)*cardHeight + float64(optionCount-1)*gap
+	cardY := 176.0 + (372.0-blockHeight)/2
 	return ui.Rect{X: cardX, Y: cardY + float64(index)*(cardHeight+gap), W: cardWidth, H: cardHeight}
 }
 
@@ -239,10 +334,10 @@ func drawMenuOptionCard(screen *ebiten.Image, area ui.Rect, option int, label, d
 	}
 	ui.DrawRoundedPanel(screen, area, 24, ui.PanelShadowColor, outline, fill)
 
-	iconArea := ui.Rect{X: area.X + 18, Y: area.Y + 16, W: 62, H: 60}
+	iconArea := ui.Rect{X: area.X + 18, Y: area.Y + 10, W: 62, H: 58}
 	drawModeIcon(screen, iconArea, option, selected || hovered)
-	ui.DrawText(screen, label, ui.HeadingFace(), area.X+96, area.Y+20, titleColor)
-	ui.DrawText(screen, detail, ui.BodyFace(), area.X+96, area.Y+54, detailColor)
+	ui.DrawText(screen, label, ui.HeadingFace(), area.X+96, area.Y+15, titleColor)
+	ui.DrawText(screen, detail, ui.BodyFace(), area.X+96, area.Y+46, detailColor)
 }
 
 func drawModeIcon(screen *ebiten.Image, area ui.Rect, option int, active bool) {
@@ -265,11 +360,17 @@ func drawModeIcon(screen *ebiten.Image, area ui.Rect, option int, active bool) {
 		drawCrowdIcon(screen, cx, cy, iconColor)
 		ui.DrawLine(screen, float64(cx+16), float64(cy-18), float64(cx+16), float64(cy-6), 3, ui.AccentColor)
 		ui.DrawLine(screen, float64(cx+10), float64(cy-12), float64(cx+22), float64(cy-12), 3, ui.AccentColor)
-	default:
+	case 2:
 		drawCrowdIcon(screen, cx, cy, iconColor)
 		ui.DrawLine(screen, float64(cx+8), float64(cy+12), float64(cx+24), float64(cy+12), 3, ui.AccentColor)
 		ui.DrawLine(screen, float64(cx+16), float64(cy+6), float64(cx+24), float64(cy+12), 3, ui.AccentColor)
 		ui.DrawLine(screen, float64(cx+16), float64(cy+18), float64(cx+24), float64(cy+12), 3, ui.AccentColor)
+	default:
+		vector.FillCircle(screen, cx-12, cy, 6, iconColor, true)
+		vector.FillCircle(screen, cx+12, cy-10, 6, iconColor, true)
+		vector.FillCircle(screen, cx+12, cy+10, 6, iconColor, true)
+		ui.DrawLine(screen, float64(cx-6), float64(cy), float64(cx+6), float64(cy-8), 3, ui.AccentColor)
+		ui.DrawLine(screen, float64(cx-6), float64(cy), float64(cx+6), float64(cy+8), 3, ui.AccentColor)
 	}
 }
 
@@ -282,7 +383,7 @@ func drawCrowdIcon(screen *ebiten.Image, cx, cy float32, clr color.Color) {
 }
 
 func drawLauncherStatusBar(screen *ebiten.Image, model LauncherMenuModel) {
-	footer := ui.Rect{X: sim.CenterX - 322, Y: 548, W: 644, H: 42}
+	footer := ui.Rect{X: sim.CenterX - 322, Y: 568, W: 644, H: 42}
 	ui.DrawRoundedPanel(screen, footer, 18, color.RGBA{0, 0, 0, 0}, ui.WithAlpha(ui.PanelStrokeColor, 170), ui.PanelInsetColor)
 	ui.DrawTextCentered(screen, launcherStatus(model), ui.SmallFace(), sim.CenterX, footer.Y+12, ui.TextSoftColor)
 }
@@ -296,7 +397,7 @@ func launcherStatus(model LauncherMenuModel) string {
 		return "Choose Solo Game to pick your color and start a local match against the computer."
 	case 1:
 		return "Choose Host Multiplayer to pick your color and open a LAN room."
-	default:
+	case 2:
 		if model.RoomCount == 1 {
 			return "1 LAN room is available now. Choose Join Multiplayer to browse it."
 		}
@@ -304,7 +405,22 @@ func launcherStatus(model LauncherMenuModel) string {
 			return fmt.Sprintf("%d LAN rooms are available now. Choose Join Multiplayer to browse them.", model.RoomCount)
 		}
 		return "Choose Join Multiplayer to browse LAN rooms on your network."
+	default:
+		return "Choose Online Rooms to create a room, host it, or join one by code."
 	}
+}
+
+func drawOnlineRoomCard(screen *ebiten.Image, area ui.Rect, title, detail string, focused bool) {
+	outline := ui.WithAlpha(ui.PanelStrokeColor, 190)
+	fill := ui.PanelInsetColor
+	if focused {
+		outline = ui.AccentColor
+		fill = ui.PanelAltColor
+		ui.DrawGlow(screen, area, 18, ui.WithAlpha(ui.AccentSoftColor, 60))
+	}
+	ui.DrawRoundedPanel(screen, area, 22, ui.PanelShadowColor, outline, fill)
+	ui.DrawText(screen, title, ui.HeadingFace(), area.X+20, area.Y+18, ui.TextLightColor)
+	ui.DrawText(screen, detail, ui.SmallFace(), area.X+20, area.Y+52, ui.TextSoftColor)
 }
 
 func launchSetupColors() []sim.TeamColor {
@@ -389,4 +505,3 @@ func truncateLabel(value string, maxRunes int) string {
 	}
 	return string(runes[:maxRunes-3]) + "..."
 }
-

@@ -13,6 +13,8 @@ type matchMenuMode int
 
 type matchMenuAction int
 
+type onlineField int
+
 type matchMenuState struct {
 	Mode     matchMenuMode
 	Selected int
@@ -25,16 +27,20 @@ type launchSetupState struct {
 }
 
 type launchMenu struct {
-	Selected   menuOption
-	Color      sim.TeamColor
-	Status     string
-	Rooms      []discovery.Room
-	RoomCursor int
+	Selected       menuOption
+	Color          sim.TeamColor
+	Status         string
+	Rooms          []discovery.Room
+	RoomCursor     int
+	OnlineRoomName string
+	OnlineRoomCode string
+	OnlineFocus    onlineField
 }
 
 const (
 	appScreenMenu appScreen = iota
 	appScreenJoinBrowser
+	appScreenOnlineRooms
 	appScreenSolo
 	appScreenRemote
 )
@@ -43,6 +49,7 @@ const (
 	menuOptionSolo menuOption = iota
 	menuOptionHost
 	menuOptionJoin
+	menuOptionOnline
 )
 
 const (
@@ -56,6 +63,11 @@ const (
 	matchMenuActionNone matchMenuAction = iota
 	matchMenuActionQuit
 	matchMenuActionRoomMenu
+)
+
+const (
+	onlineFieldRoomName onlineField = iota
+	onlineFieldRoomCode
 )
 
 var launcherColorCycle = []sim.TeamColor{

@@ -15,21 +15,25 @@ const (
 )
 
 type Message struct {
-	Kind      MessageKind    `json:"kind"`
-	MatchID   string         `json:"match_id,omitempty"`
-	ClientID  string         `json:"client_id,omitempty"`
-	Team      sim.Team       `json:"team,omitempty"`
-	Tick      uint64         `json:"tick,omitempty"`
-	TickRate  int            `json:"tick_rate,omitempty"`
-	Move      sim.Vec2       `json:"move,omitempty"`
-	Shoot     bool           `json:"shoot,omitempty"`
-	Pass      bool           `json:"pass,omitempty"`
-	Switch    bool           `json:"switch,omitempty"`
-	Ready     bool           `json:"ready,omitempty"`
-	ColorPrev bool           `json:"color_prev,omitempty"`
-	ColorNext bool           `json:"color_next,omitempty"`
-	State     *sim.GameState `json:"state,omitempty"`
-	Error     string         `json:"error,omitempty"`
+	Kind       MessageKind    `json:"kind"`
+	MatchID    string         `json:"match_id,omitempty"`
+	ClientID   string         `json:"client_id,omitempty"`
+	Team       sim.Team       `json:"team,omitempty"`
+	Tick       uint64         `json:"tick,omitempty"`
+	TickRate   int            `json:"tick_rate,omitempty"`
+	Move       sim.Vec2       `json:"move,omitempty"`
+	Shoot      bool           `json:"shoot,omitempty"`
+	Pass       bool           `json:"pass,omitempty"`
+	Switch     bool           `json:"switch,omitempty"`
+	Ready      bool           `json:"ready,omitempty"`
+	ColorPrev  bool           `json:"color_prev,omitempty"`
+	ColorNext  bool           `json:"color_next,omitempty"`
+	State      *sim.GameState `json:"state,omitempty"`
+	Error      string         `json:"error,omitempty"`
+	RoomCode   string         `json:"room_code,omitempty"`
+	RoomName   string         `json:"room_name,omitempty"`
+	CreateRoom bool           `json:"create_room,omitempty"`
+	Host       bool           `json:"host,omitempty"`
 }
 
 func MessageFromInput(input sim.InputFrame, clientID string) Message {

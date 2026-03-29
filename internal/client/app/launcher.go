@@ -2,7 +2,9 @@ package app
 
 import (
 	"fmt"
+	"strings"
 
+	clientinput "hockeyv2/internal/client/input"
 	"hockeyv2/internal/client/render"
 	"hockeyv2/internal/client/ui"
 	"hockeyv2/internal/discovery"
@@ -24,14 +26,18 @@ type App struct {
 	hostServeErr   chan error
 	hostAdvertiser *discovery.Advertiser
 	browser        *discovery.Browser
+	roomMenuScreen appScreen
 }
 
 func NewApp() *App {
 	app := &App{
 		screen: appScreenMenu,
 		menu: launchMenu{
-			Selected: menuOptionSolo,
-			Color:    sim.TeamColorBlue,
+			Selected:       menuOptionSolo,
+			Color:          sim.TeamColorBlue,
+			OnlineRoomName: defaultOnlineRoomName(),
+			OnlineRoomCode: "",
+			OnlineFocus:    onlineFieldRoomName,
 		},
 	}
 	browser, err := discovery.NewBrowser()
@@ -118,6 +124,8 @@ func (a *App) Update() error {
 		return nil
 	case appScreenJoinBrowser:
 		return a.updateJoinBrowser()
+	case appScreenOnlineRooms:
+		return a.updateOnlineRooms()
 	default:
 		return a.updateMenu()
 	}
@@ -131,8 +139,14 @@ func (a *App) Draw(screen *ebiten.Image) {
 		a.remote.Draw(screen)
 	case appScreenJoinBrowser:
 		render.DrawJoinBrowser(screen, render.JoinBrowserModel{Rooms: a.menu.Rooms, SelectedRoom: a.menu.RoomCursor, Status: a.menu.Status})
+	case appScreenOnlineRooms:
+		render.DrawOnlineRoom(screen, a.onlineRoomModel())
 	default:
-		render.DrawLauncherMenu(screen, render.LauncherMenuModel{SelectedOption: int(a.menu.Selected), Status: a.menu.Status, RoomCount: len(a.menu.Rooms)})
+		render.DrawLauncherMenu(screen, render.LauncherMenuModel{
+			SelectedOption: int(a.menu.Selected),
+			Status:         a.menu.Status,
+			RoomCount:      len(a.menu.Rooms),
+		})
 		if a.setup.Active {
 			render.DrawLaunchSetup(screen, a.launchSetupModel())
 		}
@@ -153,6 +167,15 @@ func (a *App) launchSetupModel() render.LaunchSetupModel {
 		model.ConfirmLabel = "Host LAN Game"
 	}
 	return model
+}
+
+func (a *App) onlineRoomModel() render.OnlineRoomModel {
+	return render.OnlineRoomModel{
+		RoomName:     a.menu.OnlineRoomName,
+		RoomCode:     a.menu.OnlineRoomCode,
+		FocusedField: int(a.menu.OnlineFocus),
+		Status:       a.menu.Status,
+	}
 }
 
 func (a *App) pollDiscoveryUpdates() {
@@ -203,12 +226,13 @@ func (a *App) updateMenu() error {
 	if a.setup.Active {
 		return a.updateLaunchSetup()
 	}
+	const menuOptionCount = 4
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		cursorX, cursorY := ebiten.CursorPosition()
 		x := float64(cursorX)
 		y := float64(cursorY)
-		for index := 0; index < 3; index++ {
-			if !ui.PointInRect(x, y, render.MenuOptionRect(index)) {
+		for index := 0; index < menuOptionCount; index++ {
+			if !ui.PointInRect(x, y, render.MenuOptionRect(index, menuOptionCount)) {
 				continue
 			}
 			a.menu.Selected = menuOption(index)
@@ -216,10 +240,10 @@ func (a *App) updateMenu() error {
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
-		a.menu.Selected = (a.menu.Selected + 2) % 3
+		a.menu.Selected = (a.menu.Selected + menuOptionCount - 1) % menuOptionCount
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
-		a.menu.Selected = (a.menu.Selected + 1) % 3
+		a.menu.Selected = (a.menu.Selected + 1) % menuOptionCount
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) || inpututil.IsKeyJustPressed(ebiten.KeySpace) {
 		return a.activateMenuOption(a.menu.Selected)
@@ -278,6 +302,12 @@ func (a *App) activateMenuOption(option menuOption) error {
 			a.menu.Status = ""
 		}
 		ebiten.SetWindowTitle("Go Hockey - Join LAN Room")
+	case menuOptionOnline:
+		a.closeLaunchSetup()
+		a.screen = appScreenOnlineRooms
+		a.menu.Status = ""
+		a.menu.OnlineFocus = onlineFieldRoomName
+		ebiten.SetWindowTitle("Go Hockey - Online Rooms")
 	}
 	return nil
 }
@@ -308,6 +338,109 @@ func (a *App) confirmLaunchSetup() error {
 		}
 		a.closeLaunchSetup()
 	}
+	return nil
+}
+
+func (a *App) updateOnlineRooms() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		a.screen = appScreenMenu
+		a.menu.Status = ""
+		ebiten.SetWindowTitle("Go Hockey")
+		return nil
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) || inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+		if a.menu.OnlineFocus == onlineFieldRoomName {
+			a.menu.OnlineFocus = onlineFieldRoomCode
+		} else {
+			a.menu.OnlineFocus = onlineFieldRoomName
+		}
+	}
+
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		cursorX, cursorY := ebiten.CursorPosition()
+		x := float64(cursorX)
+		y := float64(cursorY)
+		switch {
+		case ui.PointInRect(x, y, render.OnlineRoomBackRect()):
+			a.screen = appScreenMenu
+			a.menu.Status = ""
+			ebiten.SetWindowTitle("Go Hockey")
+			return nil
+		case ui.PointInRect(x, y, render.OnlineRoomNameFieldRect()):
+			a.menu.OnlineFocus = onlineFieldRoomName
+		case ui.PointInRect(x, y, render.OnlineRoomCodeFieldRect()):
+			a.menu.OnlineFocus = onlineFieldRoomCode
+		case ui.PointInRect(x, y, render.OnlineRoomCreateButtonRect()):
+			a.menu.OnlineFocus = onlineFieldRoomName
+			return a.createOnlineRoom()
+		case ui.PointInRect(x, y, render.OnlineRoomJoinButtonRect()):
+			a.menu.OnlineFocus = onlineFieldRoomCode
+			return a.joinOnlineRoomByCode()
+		}
+	}
+
+	if a.menu.OnlineFocus == onlineFieldRoomName {
+		a.menu.OnlineRoomName = clientinput.UpdateRoomNameField(a.menu.OnlineRoomName, onlineRoomNameMaxRunes)
+	} else {
+		a.menu.OnlineRoomCode = clientinput.UpdateRoomCodeField(a.menu.OnlineRoomCode, onlineRoomCodeLength)
+	}
+
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if a.menu.OnlineFocus == onlineFieldRoomName {
+			return a.createOnlineRoom()
+		}
+		return a.joinOnlineRoomByCode()
+	}
+	return nil
+}
+
+func (a *App) createOnlineRoom() error {
+	roomName := normalizedOnlineRoomName(a.menu.OnlineRoomName)
+	a.menu.OnlineRoomName = roomName
+	return a.startOnlineRoom("", true, roomName)
+}
+
+func (a *App) joinOnlineRoomByCode() error {
+	roomCode := strings.TrimSpace(strings.ToUpper(a.menu.OnlineRoomCode))
+	a.menu.OnlineRoomCode = roomCode
+	if roomCode == "" {
+		a.menu.Status = "Enter a 5-character room code"
+		return nil
+	}
+	if len([]rune(roomCode)) != onlineRoomCodeLength {
+		a.menu.Status = "Room codes are 5 characters"
+		return nil
+	}
+	return a.startOnlineRoom(roomCode, false, "")
+}
+
+func (a *App) startOnlineRoom(roomCode string, createRoom bool, roomName string) error {
+	addr := onlineServerAddress()
+
+	a.stopHostedServer()
+	clientConn, err := netcode.DialRoom(addr, roomCode, createRoom, roomName)
+	if err != nil {
+		a.menu.Status = onlineConnectionErrorStatus(err)
+		return nil
+	}
+
+	a.roomMenuScreen = appScreenOnlineRooms
+	if clientConn.RoomCode() != "" {
+		a.menu.OnlineRoomCode = clientConn.RoomCode()
+	}
+	if clientConn.RoomName() != "" {
+		a.menu.OnlineRoomName = clientConn.RoomName()
+	}
+
+	status := "Connected to room"
+	if clientConn.RoomCode() != "" {
+		if createRoom {
+			status = fmt.Sprintf("Created room %s", clientConn.RoomCode())
+		} else {
+			status = fmt.Sprintf("Joined room %s", clientConn.RoomCode())
+		}
+	}
+	a.startRemoteClient(clientConn, status)
 	return nil
 }
 
@@ -355,6 +488,7 @@ func (a *App) joinRoom(index int) error {
 		a.menu.Status = "That room is already full"
 		return nil
 	}
+	a.roomMenuScreen = appScreenJoinBrowser
 	if err := a.startRemote(room.Addr); err != nil {
 		a.menu.Status = "Unable to connect to room"
 	}
@@ -384,13 +518,17 @@ func (a *App) startRemote(addr string) error {
 	if err != nil {
 		return err
 	}
+	a.startRemoteClient(clientConn, "Connected to server")
+	return nil
+}
+
+func (a *App) startRemoteClient(clientConn *netcode.Client, status string) {
 	a.remote = newRemoteGame(clientConn)
 	a.solo = nil
 	a.screen = appScreenRemote
 	a.hostServeErr = nil
-	a.menu.Status = "Connected to room"
+	a.menu.Status = status
 	ebiten.SetWindowTitle(remoteWindowTitle(string(a.remote.localTeam)))
-	return nil
 }
 
 func (a *App) returnToMenu(status string) {
@@ -403,6 +541,7 @@ func (a *App) returnToMenu(status string) {
 	a.stopHostedServer()
 	a.closeLaunchSetup()
 	a.screen = appScreenMenu
+	a.roomMenuScreen = appScreenMenu
 	a.menu.Status = status
 	ebiten.SetWindowTitle("Go Hockey")
 }
@@ -416,24 +555,39 @@ func (a *App) returnToRoomMenu(status string) {
 	a.solo = nil
 	a.stopHostedServer()
 	a.closeLaunchSetup()
-	if a.browser == nil {
-		a.screen = appScreenMenu
-		if status == "" {
-			status = "LAN discovery unavailable"
+
+	switch a.roomMenuScreen {
+	case appScreenOnlineRooms:
+		a.screen = appScreenOnlineRooms
+		if status != "" {
+			a.menu.Status = status
+		} else {
+			a.menu.Status = ""
 		}
-		a.menu.Status = status
-		ebiten.SetWindowTitle("Go Hockey")
+		ebiten.SetWindowTitle("Go Hockey - Online Rooms")
 		return
+	case appScreenJoinBrowser:
+		if a.browser != nil {
+			a.screen = appScreenJoinBrowser
+			if status != "" {
+				a.menu.Status = status
+			} else if len(a.menu.Rooms) == 0 {
+				a.menu.Status = "Searching for LAN rooms"
+			} else {
+				a.menu.Status = ""
+			}
+			ebiten.SetWindowTitle("Go Hockey - Join LAN Room")
+			return
+		}
 	}
-	a.screen = appScreenJoinBrowser
-	if status != "" {
-		a.menu.Status = status
-	} else if len(a.menu.Rooms) == 0 {
-		a.menu.Status = "Searching for LAN rooms"
-	} else {
-		a.menu.Status = ""
+
+	a.screen = appScreenMenu
+	if status == "" {
+		status = "Back at launcher"
 	}
-	ebiten.SetWindowTitle("Go Hockey - Join LAN Room")
+	a.menu.Status = status
+	a.roomMenuScreen = appScreenMenu
+	ebiten.SetWindowTitle("Go Hockey")
 }
 
 func (a *App) stopHostedServer() {

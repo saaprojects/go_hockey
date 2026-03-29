@@ -49,5 +49,6 @@ func TestDrawHelpersSmoke(t *testing.T) {
 	DrawText(screen, "Go Hockey", BodyFace(), 24, 24, color.White)
 	DrawTextCentered(screen, "Centered", SmallFace(), sim.CenterX, 80, color.Black)
 	DrawOverlayButton(screen, Rect{X: 30, Y: 100, W: 140, H: 40}, "Resume", true, true)
+	DrawInputField(screen, Rect{X: 30, Y: 150, W: 280, H: 68}, "Room Code", "AB12C", "ABCDE", true)
 	DrawModalMenu(screen, "Pause Menu", "Choose what to do next.", "Enter selects.", []MenuEntry{{Label: "Resume"}, {Label: "Quit", Disabled: true}}, 0)
 }

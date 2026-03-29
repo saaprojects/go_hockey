@@ -17,6 +17,9 @@ type Client struct {
 	team      sim.Team
 	clientID  string
 	matchID   string
+	roomCode  string
+	roomName  string
+	host      bool
 	snapshots chan sim.GameState
 	errs      chan error
 	sendMu    sync.Mutex
@@ -25,13 +28,18 @@ type Client struct {
 }
 
 func Dial(addr string) (*Client, error) {
+	return DialRoom(addr, "", false, "")
+}
+
+func DialRoom(addr, roomCode string, createRoom bool, roomName string) (*Client, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
 	decoder := json.NewDecoder(bufio.NewReader(conn))
 	encoder := json.NewEncoder(conn)
-	if err := encoder.Encode(Message{Kind: MessageJoinRequest}); err != nil {
+	join := Message{Kind: MessageJoinRequest, RoomCode: roomCode, RoomName: roomName, CreateRoom: createRoom}
+	if err := encoder.Encode(join); err != nil {
 		conn.Close()
 		return nil, err
 	}
@@ -56,6 +64,9 @@ func Dial(addr string) (*Client, error) {
 		team:      first.Team,
 		clientID:  first.ClientID,
 		matchID:   first.MatchID,
+		roomCode:  first.RoomCode,
+		roomName:  first.RoomName,
+		host:      first.Host,
 		snapshots: make(chan sim.GameState, 4),
 		errs:      make(chan error, 1),
 		closed:    make(chan struct{}),
@@ -79,6 +90,18 @@ func (c *Client) ClientID() string {
 	return c.clientID
 }
 
+func (c *Client) RoomCode() string {
+	return c.roomCode
+}
+
+func (c *Client) RoomName() string {
+	return c.roomName
+}
+
+func (c *Client) IsHost() bool {
+	return c.host
+}
+
 func (c *Client) Snapshots() <-chan sim.GameState {
 	return c.snapshots
 }
@@ -92,6 +115,7 @@ func (c *Client) SendInput(input sim.InputFrame) error {
 	input.ClientID = c.clientID
 	message := MessageFromInput(input, c.clientID)
 	message.MatchID = c.matchID
+	message.RoomCode = c.roomCode
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
 	return c.encoder.Encode(message)

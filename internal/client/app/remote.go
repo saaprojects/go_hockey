@@ -24,6 +24,9 @@ type RemoteGame struct {
 	standalone         bool
 	disconnected       string
 	pendingRematchVote bool
+	roomCode           string
+	roomName           string
+	host               bool
 }
 
 func NewRemoteGame(addr string) (*RemoteGame, error) {
@@ -42,6 +45,9 @@ func newRemoteGame(clientConn *netcode.Client) *RemoteGame {
 		localTeam: clientConn.Team(),
 		state:     sim.NewGameState(),
 		sounds:    defaultSoundboard(),
+		roomCode:  clientConn.RoomCode(),
+		roomName:  clientConn.RoomName(),
+		host:      clientConn.IsHost(),
 	}
 }
 
@@ -113,9 +119,23 @@ snapshotsDone:
 func (g *RemoteGame) Draw(screen *ebiten.Image) {
 	render.DrawMatch(screen, g.state, g.localTeam)
 	if g.state.Phase != sim.MatchPhasePlaying && !g.state.GameOver {
-		render.DrawReadyOverlay(screen, g.state, g.localTeam, "Connected to online match")
+		overlayStatus := "Connected to online match"
+		if g.roomCode != "" {
+			overlayStatus = fmt.Sprintf("Room %s", g.roomCode)
+			if g.host {
+				overlayStatus += "  Host"
+			}
+		}
+		render.DrawReadyOverlay(screen, g.state, g.localTeam, overlayStatus)
 	}
-	render.DrawNetworkHUD(screen, g.state, fmt.Sprintf("Go Hockey Online %s", strings.ToUpper(string(g.localTeam))), g.networkStatus())
+	hudTitle := fmt.Sprintf("Go Hockey Online %s", strings.ToUpper(string(g.localTeam)))
+	if g.roomCode != "" {
+		hudTitle = fmt.Sprintf("Room %s %s", g.roomCode, strings.ToUpper(string(g.localTeam)))
+		if g.host {
+			hudTitle = "Host " + hudTitle
+		}
+	}
+	render.DrawNetworkHUD(screen, g.state, hudTitle, g.networkStatus())
 	if g.menu.Visible() {
 		title, subtitle, footer := g.remoteMenuText()
 		ui.DrawModalMenu(screen, title, subtitle, footer, g.remoteMenuEntries(), g.menu.Selected)
@@ -232,9 +252,21 @@ func (g *RemoteGame) remoteMenuEntries() []ui.MenuEntry {
 }
 
 func (g *RemoteGame) remoteMenuText() (string, string, string) {
+	roomHint := ""
+	if g.roomCode != "" {
+		roomHint = fmt.Sprintf(" Room code: %s.", g.roomCode)
+	}
+	hostHint := ""
+	if g.host {
+		hostHint = " You created this room."
+	}
 	switch g.menu.Mode {
 	case matchMenuModePause:
-		return "Match Menu", "Your player will idle while this menu is open.", "Enter selects. Esc returns to the match."
+		subtitle := "Your player will idle while this menu is open."
+		if g.roomName != "" {
+			subtitle = fmt.Sprintf("%s is still live while this menu is open.", g.roomName)
+		}
+		return "Match Menu", subtitle + roomHint + hostHint, "Enter selects. Esc returns to the match."
 	case matchMenuModePostgame:
 		title := "Game Over"
 		opponent := g.opponentTeam()
@@ -247,7 +279,7 @@ func (g *RemoteGame) remoteMenuText() (string, string, string) {
 		if g.localTeamReady() {
 			subtitle = "Rematch requested. Waiting for the other player."
 		}
-		return title, subtitle, "Both players must choose Play Again to restart."
+		return title, subtitle, "Both players must choose Play Again to restart." + roomHint
 	case matchMenuModeDisconnected:
 		return "Connection Lost", "The match is no longer connected to the server.", "Choose Quit Match or Room Menu."
 	default:
@@ -256,9 +288,22 @@ func (g *RemoteGame) remoteMenuText() (string, string, string) {
 }
 
 func (g *RemoteGame) networkStatus() string {
-	status := fmt.Sprintf("Online %s  WASD move  Shift pass  Space shoot/check  Tab switch  Esc menu", strings.ToUpper(string(g.localTeam)))
+	roomPrefix := ""
+	if g.roomCode != "" {
+		roomPrefix = fmt.Sprintf("Room %s  ", g.roomCode)
+		if g.host {
+			roomPrefix = fmt.Sprintf("Host %s", roomPrefix)
+		}
+	}
+	status := fmt.Sprintf("%sOnline %s  WASD move  Shift pass  Space shoot/check  Tab switch  Esc menu", roomPrefix, strings.ToUpper(string(g.localTeam)))
 	if g.state.Phase != sim.MatchPhasePlaying && !g.state.GameOver {
 		status = "Menu controls: A/Left and D/Right or click arrows change color  Space/Enter or click Ready toggles ready"
+		if g.roomCode != "" {
+			status = fmt.Sprintf("Room %s  %s", g.roomCode, status)
+			if g.host {
+				status = "Host " + status
+			}
+		}
 	}
 	if g.menu.Mode == matchMenuModePause {
 		status = "Match menu open  Choose Resume, Quit Match, or Room Menu"

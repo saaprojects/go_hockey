@@ -41,7 +41,7 @@ func TestPaletteAndTeamColorLabels(t *testing.T) {
 	}
 }
 
-func TestLauncherSetupAndReadyOverlayRects(t *testing.T) {
+func TestLauncherSetupReadyAndOnlineRects(t *testing.T) {
 	panel := LaunchSetupPanelRect()
 	if panel.W <= 0 || panel.H <= 0 {
 		t.Fatalf("unexpected launch setup panel rect %+v", panel)
@@ -58,8 +58,8 @@ func TestLauncherSetupAndReadyOverlayRects(t *testing.T) {
 		t.Fatalf("expected confirm button to appear after back button, got %+v", confirm)
 	}
 
-	card0 := MenuOptionRect(0)
-	card1 := MenuOptionRect(1)
+	card0 := MenuOptionRect(0, 4)
+	card1 := MenuOptionRect(1, 4)
 	if card1.Y <= card0.Y {
 		t.Fatalf("expected later menu card lower on screen: %+v vs %+v", card0, card1)
 	}
@@ -71,6 +71,17 @@ func TestLauncherSetupAndReadyOverlayRects(t *testing.T) {
 	}
 	if ReadyOverlayReadyRect(sim.TeamHome).Y <= ReadyOverlayColorLabelRect(sim.TeamHome).Y {
 		t.Fatalf("expected ready button below color controls")
+	}
+
+	onlinePanel := OnlineRoomPanelRect()
+	if OnlineRoomBackRect().Y <= OnlineRoomJoinCardRect().Y {
+		t.Fatalf("expected online back button below room cards")
+	}
+	if OnlineRoomCreateButtonRect().X <= OnlineRoomNameFieldRect().X {
+		t.Fatalf("expected create button to the right of the room name field")
+	}
+	if OnlineRoomCodeFieldRect().X < onlinePanel.X || OnlineRoomJoinCardRect().Y <= OnlineRoomCreateCardRect().Y {
+		t.Fatalf("expected online room controls inside panel and join card below create card")
 	}
 }
 
@@ -108,9 +119,10 @@ func TestRenderDrawFunctionsSmoke(t *testing.T) {
 	multiplayer.LastIntermissionStats = sim.PeriodStats{Period: 1, Home: sim.TeamPeriodStats{ShotsOnGoal: 5, Goals: 2}, Away: sim.TeamPeriodStats{ShotsOnGoal: 3, Goals: 1}}
 	DrawReadyOverlay(screen, multiplayer, sim.TeamAway, "Intermission")
 
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 0, Status: "Ready", RoomCount: 2})
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 1, Status: "Hosting", RoomCount: 0})
-	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 2, Status: "Browsing", RoomCount: 3})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 0, Status: "Ready", RoomCount: 2, OnlineEnabled: true})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 1, Status: "Hosting", RoomCount: 0, OnlineEnabled: true})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 2, Status: "Browsing", RoomCount: 3, OnlineEnabled: true})
+	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 3, Status: "Set GO_HOCKEY_ONLINE_ADDR", RoomCount: 0, OnlineEnabled: false})
 	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Solo Game Setup", Description: "Pick your team color.", ConfirmLabel: "Start Solo Game", Color: sim.TeamColorBlue})
 	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Host Multiplayer Setup", Description: "Pick your team color.", ConfirmLabel: "Host LAN Game", Color: sim.TeamColorRed, Status: "Unable to advertise local room"})
 
@@ -123,5 +135,6 @@ func TestRenderDrawFunctionsSmoke(t *testing.T) {
 		SelectedRoom: 1,
 		Status:       "Connected",
 	})
+	DrawOnlineRoom(screen, OnlineRoomModel{RoomName: "Friday Night", RoomCode: "AB12C", FocusedField: 1, Status: "Joined room AB12C", ServerAddr: "play.example.com:4242"})
+	DrawOnlineRoom(screen, OnlineRoomModel{RoomName: "", RoomCode: "", FocusedField: 0, Status: "Set GO_HOCKEY_ONLINE_ADDR to enable online rooms"})
 }
-

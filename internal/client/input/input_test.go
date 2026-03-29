@@ -77,3 +77,25 @@ func TestReadyOverlayActionAt(t *testing.T) {
 		t.Fatalf("expected no action, got %+v", got)
 	}
 }
+
+func TestApplyRoomCodeEditUppercasesAndTrimsInvalidCharacters(t *testing.T) {
+	got := applyRoomCodeEdit("ab", []rune{'c', '-', '2', '!'}, false, false, 5)
+	if got != "ABC2" {
+		t.Fatalf("expected uppercase alphanumeric room code, got %q", got)
+	}
+	got = applyRoomCodeEdit("ABCDE", []rune{'F'}, false, false, 5)
+	if got != "ABCDE" {
+		t.Fatalf("expected max length enforcement, got %q", got)
+	}
+}
+
+func TestApplyRoomNameEditAllowsCommonRoomNameCharacters(t *testing.T) {
+	got := applyRoomNameEdit("Friday", []rune{' ', 'N', 'i', 'g', 'h', 't', '#'}, false, false, 32)
+	if got != "Friday Night" {
+		t.Fatalf("expected sanitized room name, got %q", got)
+	}
+	got = applyRoomNameEdit("Go Hockey", nil, true, false, 32)
+	if got != "Go Hocke" {
+		t.Fatalf("expected backspace to remove final rune, got %q", got)
+	}
+}

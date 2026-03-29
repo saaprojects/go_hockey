@@ -2,6 +2,7 @@ package ui
 
 import (
 	"image/color"
+	"strings"
 
 	"hockeyv2/internal/sim"
 
@@ -29,6 +30,37 @@ func DrawOverlayButton(screen *ebiten.Image, area Rect, label string, hovered bo
 	}
 	labelWidth, labelHeight := MeasureText(label, face)
 	DrawText(screen, label, face, area.X+(area.W-labelWidth)/2, area.Y+(area.H-labelHeight)/2-1, textColor)
+}
+
+func DrawInputField(screen *ebiten.Image, area Rect, label, value, placeholder string, focused bool) {
+	DrawText(screen, strings.ToUpper(label), SmallFace(), area.X+2, area.Y+4, TextMutedColor)
+
+	box := Rect{X: area.X, Y: area.Y + 24, W: area.W, H: area.H - 24}
+	outline := PanelStrokeColor
+	fill := PanelInsetColor
+	if focused {
+		DrawGlow(screen, box, 14, WithAlpha(AccentSoftColor, 70))
+		outline = AccentColor
+		fill = PanelAltColor
+	}
+	DrawRoundedPanel(screen, box, 16, PanelShadowColor, outline, fill)
+
+	display := value
+	textColor := TextLightColor
+	if strings.TrimSpace(display) == "" {
+		display = placeholder
+		textColor = TextMutedColor
+	}
+	DrawText(screen, display, BodyFace(), box.X+16, box.Y+12, textColor)
+	if focused && strings.TrimSpace(display) != "" {
+		textWidth, _ := MeasureText(display, BodyFace())
+		caretX := box.X + 16 + textWidth + 4
+		maxCaretX := box.X + box.W - 14
+		if caretX > maxCaretX {
+			caretX = maxCaretX
+		}
+		DrawLine(screen, caretX, box.Y+10, caretX, box.Y+box.H-10, 2, AccentColor)
+	}
 }
 
 func ModalMenuPanelRect(entryCount int) Rect {

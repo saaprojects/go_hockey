@@ -27,6 +27,25 @@ func TestRemoteWindowTitleUppercasesTeam(t *testing.T) {
 	}
 }
 
+func TestOnlineHelpers(t *testing.T) {
+	if got := onlineServerAddress(); got != defaultOnlineServerAddr {
+		t.Fatalf("unexpected default online server address %q", got)
+	}
+	t.Setenv(onlineServerEnvVar, "play.example.com:4242")
+	if got := onlineServerAddress(); got != "play.example.com:4242" {
+		t.Fatalf("unexpected overridden online server address %q", got)
+	}
+	if normalizedOnlineRoomName("  Friday Night  ") != "Friday Night" {
+		t.Fatalf("expected trimmed room name")
+	}
+	if normalizedOnlineRoomName("   ") == "" {
+		t.Fatalf("expected fallback room name when blank")
+	}
+	if status := onlineConnectionErrorStatus(nil); status != "" {
+		t.Fatalf("expected blank status for nil error, got %q", status)
+	}
+}
+
 func TestMatchMenuStateLifecycle(t *testing.T) {
 	menu := matchMenuState{}
 	if menu.Visible() {
@@ -129,6 +148,24 @@ func TestJoinRoomStatusGuards(t *testing.T) {
 	}
 }
 
+func TestJoinOnlineRoomGuards(t *testing.T) {
+	app := &App{menu: launchMenu{OnlineRoomCode: "", OnlineFocus: onlineFieldRoomCode}}
+	if err := app.joinOnlineRoomByCode(); err != nil {
+		t.Fatalf("join online room without code: %v", err)
+	}
+	if app.menu.Status != "Enter a 5-character room code" {
+		t.Fatalf("unexpected join status %q", app.menu.Status)
+	}
+
+	app.menu.OnlineRoomCode = "AB"
+	if err := app.joinOnlineRoomByCode(); err != nil {
+		t.Fatalf("join online room with short code: %v", err)
+	}
+	if app.menu.Status != "Room codes are 5 characters" {
+		t.Fatalf("unexpected short code status %q", app.menu.Status)
+	}
+}
+
 func TestReturnToMenuResetsLauncherState(t *testing.T) {
 	app := &App{screen: appScreenRemote, remote: &RemoteGame{}, solo: NewSoloGame(), setup: launchSetupState{Active: true, Mode: menuOptionHost, Color: sim.TeamColorRed}}
 	app.returnToMenu("Ready")
@@ -140,23 +177,23 @@ func TestReturnToMenuResetsLauncherState(t *testing.T) {
 	}
 }
 
-func TestReturnToRoomMenuUsesBrowserAvailability(t *testing.T) {
-	app := &App{screen: appScreenRemote, remote: &RemoteGame{}}
-	app.returnToRoomMenu("")
-	if app.screen != appScreenMenu || app.menu.Status != "LAN discovery unavailable" {
-		t.Fatalf("expected fallback to launcher, got screen=%v status=%q", app.screen, app.menu.Status)
+func TestReturnToRoomMenuUsesRecordedRoomScreen(t *testing.T) {
+	app := &App{screen: appScreenRemote, remote: &RemoteGame{}, roomMenuScreen: appScreenOnlineRooms}
+	app.returnToRoomMenu("Created room AB12C")
+	if app.screen != appScreenOnlineRooms || app.menu.Status != "Created room AB12C" {
+		t.Fatalf("expected online rooms state, got screen=%v status=%q", app.screen, app.menu.Status)
 	}
 
-	app = &App{screen: appScreenRemote, remote: &RemoteGame{}, browser: &discovery.Browser{}}
+	app = &App{screen: appScreenRemote, remote: &RemoteGame{}, browser: &discovery.Browser{}, roomMenuScreen: appScreenJoinBrowser}
 	app.returnToRoomMenu("")
 	if app.screen != appScreenJoinBrowser || app.menu.Status != "Searching for LAN rooms" {
 		t.Fatalf("expected join browser search state, got screen=%v status=%q", app.screen, app.menu.Status)
 	}
 
-	app = &App{screen: appScreenRemote, remote: &RemoteGame{}, browser: &discovery.Browser{}, menu: launchMenu{Rooms: []discovery.Room{{Code: "AB12", Addr: "1.1.1.1:4242"}}}}
-	app.returnToRoomMenu("Disconnected")
-	if app.screen != appScreenJoinBrowser || app.menu.Status != "Disconnected" {
-		t.Fatalf("expected join browser with explicit status, got screen=%v status=%q", app.screen, app.menu.Status)
+	app = &App{screen: appScreenRemote, remote: &RemoteGame{}, roomMenuScreen: appScreenMenu}
+	app.returnToRoomMenu("")
+	if app.screen != appScreenMenu || app.menu.Status != "Back at launcher" {
+		t.Fatalf("expected launcher fallback, got screen=%v status=%q", app.screen, app.menu.Status)
 	}
 }
 
@@ -203,6 +240,14 @@ func TestActivateMenuOptionTransitions(t *testing.T) {
 	}
 	if app.menu.Status != "Searching for LAN rooms" {
 		t.Fatalf("unexpected join search status %q", app.menu.Status)
+	}
+
+	app = &App{}
+	if err := app.activateMenuOption(menuOptionOnline); err != nil {
+		t.Fatalf("activate online: %v", err)
+	}
+	if app.screen != appScreenOnlineRooms || app.menu.Status != "" || app.menu.OnlineFocus != onlineFieldRoomName {
+		t.Fatalf("unexpected online room state screen=%v status=%q focus=%v", app.screen, app.menu.Status, app.menu.OnlineFocus)
 	}
 }
 
@@ -290,10 +335,10 @@ func TestRemoteMenuEntries(t *testing.T) {
 }
 
 func TestRemoteMenuTextAndStatus(t *testing.T) {
-	game := &RemoteGame{localTeam: sim.TeamHome, state: sim.GameState{Score: sim.Score{Home: 3, Away: 1}}}
+	game := &RemoteGame{localTeam: sim.TeamHome, roomCode: "AB12C", state: sim.GameState{Score: sim.Score{Home: 3, Away: 1}}}
 	game.menu.Mode = matchMenuModePause
-	if title, _, footer := game.remoteMenuText(); title != "Match Menu" || footer == "" {
-		t.Fatalf("unexpected pause menu text: %q %q", title, footer)
+	if title, subtitle, footer := game.remoteMenuText(); title != "Match Menu" || subtitle == "" || footer == "" {
+		t.Fatalf("unexpected pause menu text: %q %q %q", title, subtitle, footer)
 	}
 	if status := game.networkStatus(); status != "Match menu open  Choose Resume, Quit Match, or Room Menu" {
 		t.Fatalf("unexpected pause status %q", status)
@@ -461,3 +506,4 @@ func TestSoloMatchMenuEntriesMirrorsContent(t *testing.T) {
 		t.Fatalf("unexpected menu entries %+v", entries)
 	}
 }
+

@@ -101,16 +101,20 @@ func TestDialAcceptsJoinAndStreamsSnapshots(t *testing.T) {
 			t.Errorf("expected join request, got %q", join.Kind)
 			return
 		}
-		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "match-1", ClientID: "client-1", Team: sim.TeamAway, State: &initial}); err != nil {
+		if join.RoomCode != "AB12C" || join.RoomName != "Friday Night" || !join.CreateRoom {
+			t.Errorf("unexpected join metadata %+v", join)
+			return
+		}
+		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-AB12C", RoomCode: "AB12C", RoomName: "Friday Night", ClientID: "client-1", Team: sim.TeamAway, State: &initial}); err != nil {
 			t.Errorf("encode join accepted: %v", err)
 			return
 		}
-		if err := encoder.Encode(Message{Kind: MessageSnapshot, State: &next}); err != nil {
+		if err := encoder.Encode(Message{Kind: MessageSnapshot, RoomCode: "AB12C", State: &next}); err != nil {
 			t.Errorf("encode snapshot: %v", err)
 		}
 	})
 
-	client, err := Dial(addr)
+	client, err := DialRoom(addr, "AB12C", true, "Friday Night")
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -119,8 +123,11 @@ func TestDialAcceptsJoinAndStreamsSnapshots(t *testing.T) {
 	if client.Team() != sim.TeamAway {
 		t.Fatalf("expected away team, got %q", client.Team())
 	}
-	if client.ClientID() != "client-1" || client.MatchID() != "match-1" {
+	if client.ClientID() != "client-1" || client.MatchID() != "room-AB12C" {
 		t.Fatalf("unexpected handshake ids: client=%q match=%q", client.ClientID(), client.MatchID())
+	}
+	if client.RoomCode() != "AB12C" || client.RoomName() != "Friday Night" {
+		t.Fatalf("unexpected room metadata code=%q name=%q", client.RoomCode(), client.RoomName())
 	}
 
 	first := waitSnapshot(t, client.Snapshots())
@@ -140,7 +147,7 @@ func TestDialReturnsServerError(t *testing.T) {
 		encoder := json.NewEncoder(conn)
 		var join Message
 		_ = decoder.Decode(&join)
-		_ = encoder.Encode(Message{Kind: MessageError, Error: "match full"})
+		_ = encoder.Encode(Message{Kind: MessageError, Error: "room full"})
 	})
 
 	client, err := Dial(addr)
@@ -148,8 +155,8 @@ func TestDialReturnsServerError(t *testing.T) {
 		client.Close()
 		t.Fatalf("expected server error")
 	}
-	if err.Error() != "match full" {
-		t.Fatalf("expected match full error, got %v", err)
+	if err.Error() != "room full" {
+		t.Fatalf("expected room full error, got %v", err)
 	}
 }
 
@@ -181,7 +188,7 @@ func TestClientSendInputUsesAssignedIdentity(t *testing.T) {
 			t.Errorf("decode join: %v", err)
 			return
 		}
-		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "match-2", ClientID: "client-2", Team: sim.TeamAway}); err != nil {
+		if err := encoder.Encode(Message{Kind: MessageJoinAccepted, MatchID: "room-ZXCVB", RoomCode: "ZXCVB", ClientID: "client-2", Team: sim.TeamAway}); err != nil {
 			t.Errorf("encode accepted: %v", err)
 			return
 		}
@@ -193,7 +200,7 @@ func TestClientSendInputUsesAssignedIdentity(t *testing.T) {
 		received <- input
 	})
 
-	client, err := Dial(addr)
+	client, err := DialRoom(addr, "ZXCVB", false, "")
 	if err != nil {
 		t.Fatalf("dial: %v", err)
 	}
@@ -208,7 +215,7 @@ func TestClientSendInputUsesAssignedIdentity(t *testing.T) {
 		if message.Kind != MessageInputFrame {
 			t.Fatalf("expected input frame message, got %q", message.Kind)
 		}
-		if message.Team != sim.TeamAway || message.ClientID != "client-2" || message.MatchID != "match-2" {
+		if message.Team != sim.TeamAway || message.ClientID != "client-2" || message.MatchID != "room-ZXCVB" || message.RoomCode != "ZXCVB" {
 			t.Fatalf("unexpected message identity: %+v", message)
 		}
 		if !message.Pass || message.Tick != 9 {

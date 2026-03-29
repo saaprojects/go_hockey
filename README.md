@@ -28,6 +28,7 @@ From that menu you can choose:
 - `Solo Game`
 - `Host Multiplayer`
 - `Join Multiplayer`
+- `Online Rooms`
 
 Launcher controls:
 
@@ -35,8 +36,12 @@ Launcher controls:
 - `Enter` or `Space`: launch the selected option
 - `Click`: select a launcher card or join a discovered LAN room
 - `Join Multiplayer` opens the LAN room browser
+- `Online Rooms` opens the internet room screen
 - In the LAN room browser, `Up` and `Down` or `W` and `S`: change the selected room
 - In the LAN room browser, `Enter` or `Space`: join the selected room
+- In `Online Rooms`, type a room name to create or type a 5-character code to join
+- In `Online Rooms`, `Tab`, `Up`, or `Down`: switch between the room-name and room-code fields
+- In `Online Rooms`, `Enter`: create or join using the focused field
 
 ## In-match controls
 
@@ -111,10 +116,17 @@ Run only the authoritative match server:
 go run ./hockey-v2 -server -listen :4242
 ```
 
-Join from another machine with either the launcher LAN browser or a direct address:
+Join from another machine with either the launcher LAN browser, the online room flow, or a direct address:
 
 ```powershell
 go run ./hockey-v2 -join YOUR_HOST_OR_IP:4242
+```
+
+For launcher-based internet rooms, point clients at a public room server first:
+
+```powershell
+$env:GO_HOCKEY_ONLINE_ADDR="YOUR_PUBLIC_HOST:4242"
+go run ./hockey-v2
 ```
 
 ## Online client controls
@@ -129,6 +141,7 @@ During play:
 Notes:
 
 - The current networking path is server-authoritative.
+- `Online Rooms` uses a single public Go Hockey server that can host multiple 5-character room-code matches at once.
 - This first slice sends full snapshots over TCP, so it is a real multiplayer prototype, not the final low-latency netcode.
 - Solo mode still runs entirely local.
 - Multiplayer now includes pregame color selection, intermission ready-up screens, and simple period stats.
@@ -145,4 +158,5 @@ go run ./hockey-v2 -headless
 2. Use the same sim for solo, bot matches, and online play.
 3. Run multiplayer through a dedicated server process or `-host` mode.
 4. Replace the naive full-snapshot TCP path with prediction/interpolation once the baseline online loop feels good.
+
 
