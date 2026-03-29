@@ -25,7 +25,7 @@ go run .
 
 From that menu you can choose:
 
-- `Solo Game`
+- `Single Player Game`
 - `Host Multiplayer`
 - `Join Multiplayer`
 
@@ -78,7 +78,7 @@ The first player to join gets `home`. The second gets `away`.
 
 ## Online lobby and intermission controls
 
-During the launcher, Solo Game also lets you choose your team color before the match starts.
+During the launcher, Single Player Game also lets you choose your team color before the match starts.
 
 During the pregame ready screen:
 

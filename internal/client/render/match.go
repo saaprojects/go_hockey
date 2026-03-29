@@ -154,7 +154,6 @@ func drawTeamSelectionCard(screen *ebiten.Image, state sim.GameState, team sim.T
 		ui.DrawGlow(screen, area, 22, ui.WithAlpha(ui.AccentSoftColor, 54))
 	}
 	ui.DrawRoundedPanel(screen, area, 24, ui.PanelShadowColor, ui.PanelStrokeColor, ui.PanelColor)
-	vector.FillRect(screen, float32(area.X+18), float32(area.Y+16), float32(area.W-36), 1, ui.FrostLineColor, false)
 	vector.FillRect(screen, float32(area.X), float32(area.Y), float32(area.W), 12, palette.Primary, false)
 
 	teamLabel := "HOME TEAM"

@@ -50,7 +50,7 @@ func DrawLauncherMenu(screen *ebiten.Image, model LauncherMenuModel) {
 	ui.DrawTextCentered(screen, "Click a mode card to continue. Keyboard still works if you want it.", ui.SmallFace(), sim.CenterX, 152, ui.TextMutedColor)
 
 	cursorX, cursorY := ebiten.CursorPosition()
-	labels := []string{"Solo Game", "Host Multiplayer", "Join Multiplayer"}
+	labels := []string{"Single Player Game", "Host Multiplayer", "Join Multiplayer"}
 	details := []string{
 		"Play against AI locally with one keyboard.",
 		"Start a LAN server and jump in from this client.",
@@ -74,8 +74,7 @@ func DrawLaunchSetup(screen *ebiten.Image, model LaunchSetupModel) {
 	header := ui.Rect{X: panel.X + 24, Y: panel.Y + 18, W: panel.W - 48, H: 52}
 	ui.DrawRoundedPanel(screen, header, 18, color.RGBA{0, 0, 0, 0}, ui.WithAlpha(ui.PanelStrokeBrightColor, 180), ui.PanelAltColor)
 	ui.DrawTextCentered(screen, model.ModeLabel, ui.HeadingFace(), sim.CenterX, header.Y+12, ui.TextLightColor)
-	ui.DrawTextCentered(screen, model.Description, ui.BodyFace(), sim.CenterX, panel.Y+82, ui.TextSoftColor)
-	ui.DrawTextCentered(screen, "The opposing team uses the next color in the list.", ui.SmallFace(), sim.CenterX, panel.Y+104, ui.TextMutedColor)
+	ui.DrawTextCentered(screen, model.Description, ui.BodyFace(), sim.CenterX, panel.Y+94, ui.TextSoftColor)
 
 	cursorX, cursorY := ebiten.CursorPosition()
 	for index, teamColor := range launchSetupColors() {
@@ -85,9 +84,7 @@ func DrawLaunchSetup(screen *ebiten.Image, model LaunchSetupModel) {
 		drawColorChip(screen, chip, teamColor, selected, hovered)
 	}
 
-	preview := ui.Rect{X: panel.X + 28, Y: panel.Y + 154, W: panel.W - 56, H: 28}
-	ui.DrawRoundedPanel(screen, preview, 14, color.RGBA{0, 0, 0, 0}, ui.WithAlpha(ui.PanelStrokeColor, 170), ui.PanelInsetColor)
-	ui.DrawTextCentered(screen, fmt.Sprintf("You: %s   |   Opponent: %s", TeamColorLabel(model.Color), TeamColorLabel(launchSetupOpponentColor(model.Color))), ui.SmallFace(), sim.CenterX, preview.Y+6, ui.TextSoftColor)
+	ui.DrawTextCentered(screen, fmt.Sprintf("You: %s   |   Opponent: %s", TeamColorLabel(model.Color), TeamColorLabel(launchSetupOpponentColor(model.Color))), ui.BodyFace(), sim.CenterX, panel.Y+182, ui.TextSoftColor)
 
 	backRect := LaunchSetupBackRect()
 	confirmRect := LaunchSetupConfirmRect()
@@ -98,7 +95,7 @@ func DrawLaunchSetup(screen *ebiten.Image, model LaunchSetupModel) {
 	if footer == "" {
 		footer = "Left and Right change color. Enter confirms. Esc goes back."
 	}
-	ui.DrawTextCentered(screen, footer, ui.SmallFace(), sim.CenterX, panel.Y+panel.H-24, ui.TextMutedColor)
+	ui.DrawTextCentered(screen, footer, ui.SmallFace(), sim.CenterX, panel.Y+panel.H-22, ui.TextMutedColor)
 }
 
 func DrawJoinBrowser(screen *ebiten.Image, model JoinBrowserModel) {
@@ -145,22 +142,22 @@ func DrawJoinBrowser(screen *ebiten.Image, model JoinBrowserModel) {
 }
 
 func LaunchSetupPanelRect() ui.Rect {
-	return ui.Rect{X: sim.CenterX - 336, Y: 214, W: 672, H: 250}
+	return ui.Rect{X: sim.CenterX - 336, Y: 192, W: 672, H: 300}
 }
 
 func LaunchSetupColorChipRect(index int) ui.Rect {
 	panel := LaunchSetupPanelRect()
-	return ui.Rect{X: panel.X + 32 + float64(index)*122, Y: panel.Y + 114, W: 110, H: 38}
+	return ui.Rect{X: panel.X + 32 + float64(index)*122, Y: panel.Y + 128, W: 110, H: 38}
 }
 
 func LaunchSetupBackRect() ui.Rect {
 	panel := LaunchSetupPanelRect()
-	return ui.Rect{X: panel.X + 32, Y: panel.Y + 190, W: 150, H: 40}
+	return ui.Rect{X: panel.X + 32, Y: panel.Y + 220, W: 150, H: 40}
 }
 
 func LaunchSetupConfirmRect() ui.Rect {
 	panel := LaunchSetupPanelRect()
-	return ui.Rect{X: panel.X + panel.W - 182, Y: panel.Y + 190, W: 150, H: 40}
+	return ui.Rect{X: panel.X + panel.W - 182, Y: panel.Y + 220, W: 150, H: 40}
 }
 
 func MenuOptionRect(index int) ui.Rect {
@@ -241,7 +238,6 @@ func drawMenuOptionCard(screen *ebiten.Image, area ui.Rect, option int, label, d
 		ui.DrawGlow(screen, area, 22, ui.WithAlpha(ui.AccentSoftColor, 70))
 	}
 	ui.DrawRoundedPanel(screen, area, 24, ui.PanelShadowColor, outline, fill)
-	vector.FillRect(screen, float32(area.X+18), float32(area.Y+16), float32(area.W-36), 1, ui.FrostLineColor, false)
 
 	iconArea := ui.Rect{X: area.X + 18, Y: area.Y + 16, W: 62, H: 60}
 	drawModeIcon(screen, iconArea, option, selected || hovered)
@@ -297,7 +293,7 @@ func launcherStatus(model LauncherMenuModel) string {
 	}
 	switch model.SelectedOption {
 	case 0:
-		return "Choose Solo Game to pick your color and start a local match."
+		return "Choose Single Player Game to pick your color and start a single player match against the computer."
 	case 1:
 		return "Choose Host Multiplayer to pick your color and open a LAN room."
 	default:

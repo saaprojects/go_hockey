@@ -111,7 +111,7 @@ func TestRenderDrawFunctionsSmoke(t *testing.T) {
 	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 0, Status: "Ready", RoomCount: 2})
 	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 1, Status: "Hosting", RoomCount: 0})
 	DrawLauncherMenu(screen, LauncherMenuModel{SelectedOption: 2, Status: "Browsing", RoomCount: 3})
-	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Solo Game Setup", Description: "Pick your team color.", ConfirmLabel: "Start Solo Game", Color: sim.TeamColorBlue})
+	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Single Player Game Setup", Description: "Pick your team color.", ConfirmLabel: "Start Single Player Game", Color: sim.TeamColorBlue})
 	DrawLaunchSetup(screen, LaunchSetupModel{ModeLabel: "Host Multiplayer Setup", Description: "Pick your team color.", ConfirmLabel: "Host LAN Game", Color: sim.TeamColorRed, Status: "Unable to advertise local room"})
 
 	DrawJoinBrowser(screen, JoinBrowserModel{Status: "Searching"})

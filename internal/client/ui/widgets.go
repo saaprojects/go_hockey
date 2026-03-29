@@ -6,7 +6,6 @@ import (
 	"hockeyv2/internal/sim"
 
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
 func DrawOverlayButton(screen *ebiten.Image, area Rect, label string, hovered bool, primary bool) {
@@ -24,7 +23,6 @@ func DrawOverlayButton(screen *ebiten.Image, area Rect, label string, hovered bo
 		outline = AccentColor
 	}
 	DrawRoundedPanel(screen, area, 14, PanelShadowColor, outline, fill)
-	vector.FillRect(screen, float32(area.X+12), float32(area.Y+10), float32(area.W-24), 1, FrostLineColor, false)
 	face := SmallFace()
 	if area.H >= 38 {
 		face = BodyFace()
