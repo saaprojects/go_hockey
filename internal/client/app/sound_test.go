@@ -54,13 +54,25 @@ func TestChooseRandomMenuMusicPathAvoidsImmediateRepeatWhenPossible(t *testing.T
 func TestNewSoundboardLoadsGoalSoundsAndMenuAudio(t *testing.T) {
 	soundboard := newSoundboard()
 	for _, teamColor := range []sim.TeamColor{sim.TeamColorBlack, sim.TeamColorOrange, sim.TeamColorGreen, sim.TeamColorBlue, sim.TeamColorRed} {
-		clip := soundboard.goalClips[teamColor]
+		if soundboard.goalLoaded[teamColor] {
+			t.Fatalf("expected goal sound for %q to be lazy-loaded", teamColor)
+		}
+		clip := soundboard.loadGoalClip(teamColor)
 		if len(clip) == 0 {
 			t.Fatalf("expected goal sound clip for %q", teamColor)
 		}
+		if !soundboard.goalLoaded[teamColor] {
+			t.Fatalf("expected goal sound for %q to be marked loaded", teamColor)
+		}
 	}
-	if len(soundboard.ambientClip) == 0 {
+	if soundboard.ambientLoaded {
+		t.Fatalf("expected arena ambient clip to be lazy-loaded")
+	}
+	if len(soundboard.loadArenaAmbientClip()) == 0 {
 		t.Fatalf("expected arena ambient clip to load")
+	}
+	if !soundboard.ambientLoaded {
+		t.Fatalf("expected arena ambient clip to be marked loaded")
 	}
 	if len(soundboard.menuMusicPaths) == 0 {
 		t.Fatalf("expected launcher music paths to load")

@@ -3,8 +3,9 @@ package sim
 import "math"
 
 type goalSegment struct {
-	Start Vec2
-	End   Vec2
+	Start  Vec2
+	End    Vec2
+	Radius float64
 }
 
 func Step(state *GameState, inputs []InputFrame) {
@@ -818,16 +819,37 @@ func updateGoalies(state *GameState) {
 	}
 	for _, goalie := range []*GoalieState{&state.HomeGoalie, &state.AwayGoalie} {
 		track := tuningFor(goalie.Team).GoalieTrack
-		targetY := focus.Y
-		if math.Abs(focus.X-goalie.HomeX) > GoalDepth+34.0 {
-			targetY = CenterY + (focus.Y-CenterY)*0.82
-		} else {
-			targetY = CenterY + (focus.Y-CenterY)*0.48
-		}
-		goalie.Position.X = goalie.HomeX
-		goalie.Position.Y += (clamp(targetY, goalie.MinY, goalie.MaxY) - goalie.Position.Y) * 0.18 * track
-		goalie.Position.Y = clamp(goalie.Position.Y, goalie.MinY, goalie.MaxY)
+		target := clampGoalieToCrease(focus, goalie.Team, goalie.Radius)
+		goalie.Position.X += (target.X - goalie.Position.X) * GoalieDepthTrack * track
+		goalie.Position.Y += (target.Y - goalie.Position.Y) * GoalieLateralTrack * track
+		goalie.Position = clampGoalieToCrease(goalie.Position, goalie.Team, goalie.Radius)
+		goalie.Position, _, _ = pushCircleOutOfGoalFrames(goalie.Position, goalie.Radius+2.0, true)
+		goalie.Position, _, _ = pushCircleOutOfGoalInterior(goalie.Position, goalie.Radius+2.0)
+		goalie.Position = clampGoalieToCrease(goalie.Position, goalie.Team, goalie.Radius)
 	}
+}
+
+func clampGoalieToCrease(position Vec2, team Team, radius float64) Vec2 {
+	center := Vec2{X: goalLineX(team), Y: CenterY}
+	delta := position.Sub(center)
+	front := attackDir(team)
+	if delta.X*front < 0.0 {
+		delta.X = 0.0
+	}
+	limit := math.Max(CreaseRadius-radius, 0.0)
+	if delta.Length() > limit {
+		delta = delta.Normalized().Mul(limit)
+	}
+	return center.Add(delta)
+}
+
+func pointInsideGoalieCrease(position Vec2, team Team, radius float64) bool {
+	center := Vec2{X: goalLineX(team), Y: CenterY}
+	delta := position.Sub(center)
+	if delta.X*attackDir(team) < -1e-6 {
+		return false
+	}
+	return delta.Length() <= math.Max(CreaseRadius-radius, 0.0)+1e-6
 }
 
 func updatePuck(state *GameState) {
@@ -945,86 +967,58 @@ func findPickupSkater(state *GameState) *SkaterState {
 }
 
 func checkGoalScored(previousPosition, position Vec2) (Team, bool) {
-	if enteredGoalMouth(previousPosition, position, GoalScorePuckRadius, false) {
+	if enteredGoalMouth(previousPosition, position, false) {
 		return TeamHome, true
 	}
-	if enteredGoalMouth(previousPosition, position, GoalScorePuckRadius, true) {
+	if enteredGoalMouth(previousPosition, position, true) {
 		return TeamAway, true
 	}
 	return TeamNone, false
 }
 
-func enteredGoalMouth(previousPosition, position Vec2, puckRadius float64, leftGoal bool) bool {
+func enteredGoalMouth(previousPosition, position Vec2, leftGoal bool) bool {
 	goalX, _, goalTop, goalBottom, _, _ := goalFrameGeometry(leftGoal)
-	if positionBehindGoalLine(previousPosition, leftGoal, goalX) {
+	scoreX := scoringGoalLineX(goalX, leftGoal)
+	if positionBehindGoalLine(previousPosition, leftGoal, scoreX) {
 		return false
 	}
-
-	top, bottom := scoringMouthBounds(goalTop, goalBottom, puckRadius)
-	if crossedGoalPlane(previousPosition, position, goalX, leftGoal, puckRadius) {
-		previousFrontX := goalFrontX(previousPosition, leftGoal, puckRadius)
-		currentFrontX := goalFrontX(position, leftGoal, puckRadius)
-		deltaX := currentFrontX - previousFrontX
-		if math.Abs(deltaX) < 1e-6 {
-			return false
-		}
-		progress := (goalX - previousFrontX) / deltaX
-		crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
-		return crossY >= top && crossY <= bottom
-	}
-
-	if !positionOnGoalFace(position, leftGoal, goalX, puckRadius) {
+	if !crossedGoalPlane(previousPosition, position, scoreX, leftGoal) {
 		return false
 	}
-	if !positionWithinScoringMouth(position, top, bottom) {
-		return false
-	}
-	if !positionOnGoalFace(previousPosition, leftGoal, goalX, puckRadius) {
-		return true
-	}
-	return !positionWithinScoringMouth(previousPosition, top, bottom)
+	top, bottom := scoringMouthBounds(goalTop, goalBottom)
+	deltaX := position.X - previousPosition.X
+	progress := (scoreX - previousPosition.X) / deltaX
+	crossY := previousPosition.Y + (position.Y-previousPosition.Y)*progress
+	return crossY >= top && crossY <= bottom
 }
 
-func scoringMouthBounds(goalTop, goalBottom, puckRadius float64) (float64, float64) {
-	return goalTop - GoalScorePostPad - puckRadius, goalBottom + GoalScorePostPad + puckRadius
+func scoringGoalLineX(goalX float64, leftGoal bool) float64 {
+	if leftGoal {
+		return goalX - GoalScoreFullCrossMargin
+	}
+	return goalX + GoalScoreFullCrossMargin
 }
 
-func crossedGoalPlane(previousPosition, position Vec2, goalX float64, leftGoal bool, puckRadius float64) bool {
-	previousFrontX := goalFrontX(previousPosition, leftGoal, puckRadius)
-	currentFrontX := goalFrontX(position, leftGoal, puckRadius)
-	deltaX := currentFrontX - previousFrontX
+func scoringMouthBounds(goalTop, goalBottom float64) (float64, float64) {
+	return goalTop + GoalFrontPostRadius, goalBottom - GoalFrontPostRadius
+}
+
+func crossedGoalPlane(previousPosition, position Vec2, goalX float64, leftGoal bool) bool {
+	deltaX := position.X - previousPosition.X
 	if math.Abs(deltaX) < 1e-6 {
 		return false
 	}
 	if leftGoal {
-		if previousFrontX < goalX || currentFrontX > goalX {
+		if previousPosition.X < goalX || position.X > goalX {
 			return false
 		}
 	} else {
-		if previousFrontX > goalX || currentFrontX < goalX {
+		if previousPosition.X > goalX || position.X < goalX {
 			return false
 		}
 	}
-	progress := (goalX - previousFrontX) / deltaX
+	progress := (goalX - previousPosition.X) / deltaX
 	return progress >= 0.0 && progress <= 1.0
-}
-
-func goalFrontX(position Vec2, leftGoal bool, puckRadius float64) float64 {
-	if leftGoal {
-		return position.X - puckRadius
-	}
-	return position.X + puckRadius
-}
-
-func positionOnGoalFace(position Vec2, leftGoal bool, goalX, puckRadius float64) bool {
-	if leftGoal {
-		return position.X <= goalX+GoalScoreDepthPad+puckRadius
-	}
-	return position.X >= goalX-GoalScoreDepthPad-puckRadius
-}
-
-func positionWithinScoringMouth(position Vec2, top, bottom float64) bool {
-	return position.Y >= top && position.Y <= bottom
 }
 
 func positionBehindGoalLine(position Vec2, leftGoal bool, goalX float64) bool {
@@ -1221,7 +1215,7 @@ func pushCircleOutOfGoalFrames(position Vec2, radius float64, includeFront bool)
 	hit := false
 	for _, leftGoal := range []bool{true, false} {
 		for _, segment := range goalFrameSegments(leftGoal, includeFront) {
-			next, normal, pushed := pushCircleFromSegment(result, radius, segment.Start, segment.End, 4.0)
+			next, normal, pushed := pushCircleFromSegment(result, radius, segment.Start, segment.End, segment.Radius)
 			if pushed {
 				result = next
 				combinedNormal = combinedNormal.Add(normal)
@@ -1344,13 +1338,40 @@ func pushCircleFromSegment(position Vec2, radius float64, start, end Vec2, segme
 
 func goalFrameSegments(leftGoal bool, includeFront bool) []goalSegment {
 	goalX, backX, goalTop, goalBottom, backTop, backBottom := goalFrameGeometry(leftGoal)
+	frontTop := Vec2{X: goalX, Y: goalTop}
+	frontBottom := Vec2{X: goalX, Y: goalBottom}
+	backTopPoint := Vec2{X: backX, Y: backTop}
+	backBottomPoint := Vec2{X: backX, Y: backBottom}
+	topDir := backTopPoint.Sub(frontTop).Normalized()
+	bottomDir := backBottomPoint.Sub(frontBottom).Normalized()
+
 	segments := []goalSegment{
-		{Start: Vec2{X: goalX, Y: goalTop}, End: Vec2{X: backX, Y: backTop}},
-		{Start: Vec2{X: goalX, Y: goalBottom}, End: Vec2{X: backX, Y: backBottom}},
-		{Start: Vec2{X: backX, Y: backTop}, End: Vec2{X: backX, Y: backBottom}},
+		{
+			Start:  frontTop.Add(topDir.Mul(GoalFrontPostRadius)),
+			End:    backTopPoint.Sub(topDir.Mul(GoalFrameRadius)),
+			Radius: GoalFrameRadius,
+		},
+		{
+			Start:  frontBottom.Add(bottomDir.Mul(GoalFrontPostRadius)),
+			End:    backBottomPoint.Sub(bottomDir.Mul(GoalFrameRadius)),
+			Radius: GoalFrameRadius,
+		},
+		{
+			Start:  Vec2{X: backX, Y: backTop + GoalFrameRadius},
+			End:    Vec2{X: backX, Y: backBottom - GoalFrameRadius},
+			Radius: GoalFrameRadius,
+		},
+		{Start: frontTop, End: frontTop, Radius: GoalFrontPostRadius},
+		{Start: frontBottom, End: frontBottom, Radius: GoalFrontPostRadius},
+		{Start: backTopPoint, End: backTopPoint, Radius: GoalFrameRadius},
+		{Start: backBottomPoint, End: backBottomPoint, Radius: GoalFrameRadius},
 	}
 	if includeFront {
-		segments = append(segments, goalSegment{Start: Vec2{X: goalX, Y: goalTop}, End: Vec2{X: goalX, Y: goalBottom}})
+		segments = append(segments, goalSegment{
+			Start:  Vec2{X: goalX, Y: goalTop + GoalFrontPostRadius},
+			End:    Vec2{X: goalX, Y: goalBottom - GoalFrontPostRadius},
+			Radius: GoalFrameRadius,
+		})
 	}
 	return segments
 }

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"io/fs"
 	"math"
@@ -22,22 +23,29 @@ import (
 
 const (
 	soundSampleRate    = 44100
-	goalSoundVolume    = 0.205
+	goalSoundVolume    = 0.1025
 	arenaAmbientVolume = 0.14
 	menuMusicVolume    = 0.04
 )
 
 type soundboard struct {
-	contextOnce       sync.Once
-	context           *audio.Context
-	goalClips         map[sim.TeamColor][]byte
-	ambientClip       []byte
-	ambientPlayer     *audio.Player
+	contextOnce sync.Once
+	context     *audio.Context
+
+	goalClips  map[sim.TeamColor][]byte
+	goalLoaded map[sim.TeamColor]bool
+
+	ambientClip   []byte
+	ambientLoaded bool
+	ambientPlayer *audio.Player
+
 	menuMusicPaths    []string
 	menuMusicPlayer   *audio.Player
+	menuMusicCloser   io.Closer
 	lastMenuMusicPath string
 	random            *rand.Rand
-	fallbackGoal      []byte
+
+	fallbackGoal []byte
 }
 
 var (
@@ -53,27 +61,14 @@ func defaultSoundboard() *soundboard {
 }
 
 func newSoundboard() *soundboard {
-	fallbackGoal := goalHornPCM()
 	seed := time.Now().UnixNano()
 	return &soundboard{
-		goalClips:      loadGoalSoundClips(fallbackGoal),
-		ambientClip:    decodeFirstAvailableMP3Asset(arenaAmbientAssetPaths()),
+		goalClips:      map[sim.TeamColor][]byte{},
+		goalLoaded:     map[sim.TeamColor]bool{},
 		menuMusicPaths: listMenuMusicAssetPaths(),
 		random:         rand.New(rand.NewSource(seed)),
-		fallbackGoal:   fallbackGoal,
+		fallbackGoal:   goalHornPCM(),
 	}
-}
-
-func loadGoalSoundClips(fallback []byte) map[sim.TeamColor][]byte {
-	clips := map[sim.TeamColor][]byte{}
-	for _, teamColor := range []sim.TeamColor{sim.TeamColorBlack, sim.TeamColorOrange, sim.TeamColorGreen, sim.TeamColorBlue, sim.TeamColorRed} {
-		clip := decodeFirstAvailableWAVAsset(goalSoundAssetPaths(teamColor))
-		if len(clip) == 0 {
-			clip = fallback
-		}
-		clips[teamColor] = clip
-	}
-	return clips
 }
 
 func goalSoundAssetPaths(teamColor sim.TeamColor) []string {
@@ -170,15 +165,53 @@ func decodeFirstAvailableMP3Asset(paths []string) []byte {
 	return nil
 }
 
-func decodeAudioAsset(fileSystem fs.FS, assetPath string) []byte {
+func openDecodedAudioStream(fileSystem fs.FS, assetPath string) (io.ReadSeeker, io.Closer, error) {
+	source, closer, err := openAudioAssetSource(fileSystem, assetPath)
+	if err != nil {
+		return nil, closer, err
+	}
+
 	switch path.Ext(assetPath) {
 	case ".wav":
-		return decodeWAVAsset(fileSystem, assetPath)
+		stream, err := wav.DecodeWithSampleRate(soundSampleRate, source)
+		if err != nil {
+			if closer != nil {
+				_ = closer.Close()
+			}
+			return nil, nil, err
+		}
+		return stream, closer, nil
 	case ".mp3":
-		return decodeMP3Asset(fileSystem, assetPath)
+		stream, err := mp3.DecodeWithSampleRate(soundSampleRate, source)
+		if err != nil {
+			if closer != nil {
+				_ = closer.Close()
+			}
+			return nil, nil, err
+		}
+		return stream, closer, nil
 	default:
-		return nil
+		if closer != nil {
+			_ = closer.Close()
+		}
+		return nil, nil, fmt.Errorf("unsupported audio asset: %s", assetPath)
 	}
+}
+
+func openAudioAssetSource(fileSystem fs.FS, assetPath string) (io.ReadSeeker, io.Closer, error) {
+	file, err := fileSystem.Open(assetPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	if seeker, ok := file.(io.ReadSeeker); ok {
+		return seeker, file, nil
+	}
+	data, err := fs.ReadFile(fileSystem, assetPath)
+	_ = file.Close()
+	if err != nil {
+		return nil, nil, err
+	}
+	return bytes.NewReader(data), nil, nil
 }
 
 func decodeWAVAsset(fileSystem fs.FS, assetPath string) []byte {
@@ -226,22 +259,38 @@ func (s *soundboard) PlayGoal(teamColor sim.TeamColor) {
 	if s == nil {
 		return
 	}
-	clip := s.goalClips[teamColor]
+	clip := s.loadGoalClip(teamColor)
 	if len(clip) == 0 {
 		clip = s.fallbackGoal
 	}
 	s.playClip(clip, goalSoundVolume)
 }
 
+func (s *soundboard) loadGoalClip(teamColor sim.TeamColor) []byte {
+	if s.goalLoaded[teamColor] {
+		return s.goalClips[teamColor]
+	}
+	clip := decodeFirstAvailableWAVAsset(goalSoundAssetPaths(teamColor))
+	s.goalLoaded[teamColor] = true
+	if len(clip) > 0 {
+		s.goalClips[teamColor] = clip
+	}
+	return clip
+}
+
 func (s *soundboard) PlayArenaAmbience() {
-	if s == nil || len(s.ambientClip) == 0 || s.ambientPlayer != nil {
+	if s == nil || s.ambientPlayer != nil {
+		return
+	}
+	clip := s.loadArenaAmbientClip()
+	if len(clip) == 0 {
 		return
 	}
 	s.ensureContext()
 	if s.context == nil {
 		return
 	}
-	loop := audio.NewInfiniteLoop(bytes.NewReader(s.ambientClip), int64(len(s.ambientClip)))
+	loop := audio.NewInfiniteLoop(bytes.NewReader(clip), int64(len(clip)))
 	player, err := s.context.NewPlayer(loop)
 	if err != nil {
 		return
@@ -249,6 +298,15 @@ func (s *soundboard) PlayArenaAmbience() {
 	player.SetVolume(arenaAmbientVolume)
 	player.Play()
 	s.ambientPlayer = player
+}
+
+func (s *soundboard) loadArenaAmbientClip() []byte {
+	if s.ambientLoaded {
+		return s.ambientClip
+	}
+	s.ambientLoaded = true
+	s.ambientClip = decodeFirstAvailableMP3Asset(arenaAmbientAssetPaths())
+	return s.ambientClip
 }
 
 func (s *soundboard) StopArenaAmbience() {
@@ -271,33 +329,48 @@ func (s *soundboard) PlayMenuMusic() {
 		if s.menuMusicPlayer.IsPlaying() {
 			return
 		}
-		_ = s.menuMusicPlayer.Close()
-		s.menuMusicPlayer = nil
+		s.StopMenuMusic()
 	}
 	for attempts := 0; attempts < len(s.menuMusicPaths); attempts++ {
 		assetPath := chooseRandomMenuMusicPath(s.menuMusicPaths, s.random, s.lastMenuMusicPath)
 		if assetPath == "" {
 			return
 		}
-		clip := decodeAudioAsset(assets.MusicFiles, assetPath)
+		stream, closer, err := openDecodedAudioStream(assets.MusicFiles, assetPath)
 		s.lastMenuMusicPath = assetPath
-		if len(clip) == 0 {
+		if err != nil {
+			if closer != nil {
+				_ = closer.Close()
+			}
 			continue
 		}
-		player := s.context.NewPlayerFromBytes(clip)
+		player, err := s.context.NewPlayer(stream)
+		if err != nil {
+			if closer != nil {
+				_ = closer.Close()
+			}
+			continue
+		}
 		player.SetVolume(menuMusicVolume)
 		player.Play()
 		s.menuMusicPlayer = player
+		s.menuMusicCloser = closer
 		return
 	}
 }
 
 func (s *soundboard) StopMenuMusic() {
-	if s == nil || s.menuMusicPlayer == nil {
+	if s == nil {
 		return
 	}
-	_ = s.menuMusicPlayer.Close()
-	s.menuMusicPlayer = nil
+	if s.menuMusicPlayer != nil {
+		_ = s.menuMusicPlayer.Close()
+		s.menuMusicPlayer = nil
+	}
+	if s.menuMusicCloser != nil {
+		_ = s.menuMusicCloser.Close()
+		s.menuMusicCloser = nil
+	}
 }
 
 func (s *soundboard) playClip(clip []byte, volume float64) {

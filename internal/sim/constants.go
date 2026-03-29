@@ -18,6 +18,7 @@ const (
 	GoalDepth        = 40.0
 	GoalLineOffset   = 88.0
 	GoalieOffset     = 18.0
+	CreaseRadius     = 74.0
 
 	HomeGoalLineX = RinkLeft + GoalLineOffset
 	AwayGoalLineX = RinkRight - GoalLineOffset
@@ -39,15 +40,17 @@ const (
 )
 
 const (
-	PlayerPassSpeed     = 540.0
-	PlayerShotSpeed     = PlayerPassSpeed * 2.0
-	AIShotSpeed         = PlayerPassSpeed * 1.85
-	GoalieReachBuffer   = 28.0
-	ShotTargetMargin    = 10.0
-	GoalTrapFaceoff     = 3.0
-	GoalScoreDepthPad   = 7.0
-	GoalScorePostPad    = 8.0
-	GoalScorePuckRadius = 8.0
+	PlayerPassSpeed          = 540.0
+	PlayerShotSpeed          = PlayerPassSpeed * 2.0
+	AIShotSpeed              = PlayerPassSpeed * 1.85
+	GoalieReachBuffer        = 28.0
+	ShotTargetMargin         = 10.0
+	GoalTrapFaceoff          = 3.0
+	GoalFrameRadius          = 4.0
+	GoalFrontPostRadius      = 8.0
+	GoalScoreFullCrossMargin = 7.0
+	GoalieDepthTrack         = 0.10
+	GoalieLateralTrack       = 0.18
 )
 
 type TeamTuning struct {

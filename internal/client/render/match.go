@@ -269,7 +269,7 @@ func drawCrease(screen *ebiten.Image, leftGoal bool) {
 	if !leftGoal {
 		goalX = sim.AwayGoalLineX
 	}
-	creaseRadius := 74.0
+	creaseRadius := sim.CreaseRadius
 	vector.FillCircle(screen, float32(goalX), float32(sim.CenterY), float32(creaseRadius), colorCrease, true)
 	vector.StrokeCircle(screen, float32(goalX), float32(sim.CenterY), float32(creaseRadius), 3, colorCreaseLine, true)
 	if leftGoal {
