@@ -52,7 +52,7 @@ func DrawInputField(screen *ebiten.Image, area Rect, label, value, placeholder s
 		textColor = TextMutedColor
 	}
 	DrawText(screen, display, BodyFace(), box.X+16, box.Y+12, textColor)
-	if focused && strings.TrimSpace(display) != "" {
+	if focused && strings.TrimSpace(value) != "" {
 		textWidth, _ := MeasureText(display, BodyFace())
 		caretX := box.X + 16 + textWidth + 4
 		maxCaretX := box.X + box.W - 14

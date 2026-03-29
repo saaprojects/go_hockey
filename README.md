@@ -122,7 +122,7 @@ Join from another machine with either the launcher LAN browser, the online room 
 go run ./hockey-v2 -join YOUR_HOST_OR_IP:4242
 ```
 
-For launcher-based internet rooms, point clients at a public room server first:
+Launcher-based internet rooms use `127.0.0.1:4242` by default so local testing works without extra setup. If you deploy a public room server later, you can override that address:
 
 ```powershell
 $env:GO_HOCKEY_ONLINE_ADDR="YOUR_PUBLIC_HOST:4242"
@@ -141,7 +141,7 @@ During play:
 Notes:
 
 - The current networking path is server-authoritative.
-- `Online Rooms` uses a single public Go Hockey server that can host multiple 5-character room-code matches at once.
+- `Online Rooms` uses a room server that can host multiple 5-character room-code matches at once.`r`n- The player who creates a room is treated as that room's host.
 - This first slice sends full snapshots over TCP, so it is a real multiplayer prototype, not the final low-latency netcode.
 - Solo mode still runs entirely local.
 - Multiplayer now includes pregame color selection, intermission ready-up screens, and simple period stats.
@@ -158,5 +158,6 @@ go run ./hockey-v2 -headless
 2. Use the same sim for solo, bot matches, and online play.
 3. Run multiplayer through a dedicated server process or `-host` mode.
 4. Replace the naive full-snapshot TCP path with prediction/interpolation once the baseline online loop feels good.
+
 
 

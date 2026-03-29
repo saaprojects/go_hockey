@@ -312,4 +312,3 @@ func TestClientReadLoopStopsAfterClose(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
-

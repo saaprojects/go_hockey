@@ -8,10 +8,10 @@ import (
 )
 
 const (
-	onlineServerEnvVar     = "GO_HOCKEY_ONLINE_ADDR"
+	onlineServerEnvVar      = "GO_HOCKEY_ONLINE_ADDR"
 	defaultOnlineServerAddr = "127.0.0.1:4242"
-	onlineRoomCodeLength   = 5
-	onlineRoomNameMaxRunes = 28
+	onlineRoomCodeLength    = 5
+	onlineRoomNameMaxRunes  = 28
 )
 
 func onlineServerAddress() string {

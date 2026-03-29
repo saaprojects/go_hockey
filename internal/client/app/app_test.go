@@ -506,4 +506,3 @@ func TestSoloMatchMenuEntriesMirrorsContent(t *testing.T) {
 		t.Fatalf("unexpected menu entries %+v", entries)
 	}
 }
-
