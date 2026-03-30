@@ -898,3 +898,39 @@ func TestMatchHelpers(t *testing.T) {
 	}
 }
 
+
+
+
+func TestGoalMouthActsLikeOpenIceForLoosePuck(t *testing.T) {
+	tests := []struct {
+		name     string
+		position Vec2
+		velocity Vec2
+	}{
+		{
+			name:     "right goal centered puck keeps traveling inside net",
+			position: Vec2{X: AwayGoalLineX + GoalScoreFullCrossMargin + 3, Y: CenterY},
+			velocity: Vec2{X: 120, Y: 0},
+		},
+		{
+			name:     "left goal centered puck keeps traveling inside net",
+			position: Vec2{X: HomeGoalLineX - GoalScoreFullCrossMargin - 3, Y: CenterY},
+			velocity: Vec2{X: -120, Y: 0},
+		},
+	}
+
+	puckRadius := NewGameState().Puck.Radius
+
+	for _, tc := range tests {
+		if !pointInsideGoal(tc.position, tc.position.X < CenterX) {
+			t.Fatalf("%s: expected test position to already be inside the goal mouth, got %#v", tc.name, tc.position)
+		}
+		nextPosition, nextVelocity := keepLoosePuckOutOfGoalTrap(tc.position, tc.velocity, puckRadius)
+		if nextPosition != tc.position {
+			t.Fatalf("%s: expected centered puck in the open mouth to stay put, got %#v from %#v", tc.name, nextPosition, tc.position)
+		}
+		if nextVelocity != tc.velocity {
+			t.Fatalf("%s: expected no invisible mouth collision to alter velocity, got %#v from %#v", tc.name, nextVelocity, tc.velocity)
+		}
+	}
+}

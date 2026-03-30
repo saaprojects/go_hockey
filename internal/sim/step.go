@@ -751,7 +751,7 @@ func containSkater(state *GameState, skater *SkaterState) {
 		skater.Position = framePosition
 		combinedNormal = combinedNormal.Add(frameNormal)
 	}
-	interiorPosition, interiorNormal, interiorHit := pushCircleOutOfGoalInterior(skater.Position, skater.Radius+2.0)
+	interiorPosition, interiorNormal, interiorHit := pushCircleOutOfGoalInterior(skater.Position, skater.Radius+2.0, true)
 	if interiorHit {
 		skater.Position = interiorPosition
 		combinedNormal = combinedNormal.Add(interiorNormal)
@@ -824,7 +824,7 @@ func updateGoalies(state *GameState) {
 		goalie.Position.Y += (target.Y - goalie.Position.Y) * GoalieLateralTrack * track
 		goalie.Position = clampGoalieToCrease(goalie.Position, goalie.Team, goalie.Radius)
 		goalie.Position, _, _ = pushCircleOutOfGoalFrames(goalie.Position, goalie.Radius+2.0, true)
-		goalie.Position, _, _ = pushCircleOutOfGoalInterior(goalie.Position, goalie.Radius+2.0)
+		goalie.Position, _, _ = pushCircleOutOfGoalInterior(goalie.Position, goalie.Radius+2.0, true)
 		goalie.Position = clampGoalieToCrease(goalie.Position, goalie.Team, goalie.Radius)
 	}
 }
@@ -1184,16 +1184,7 @@ func updatePuckTrapState(state *GameState, previousPosition Vec2) {
 }
 
 func keepLoosePuckOutOfGoalTrap(position, velocity Vec2, radius float64) (Vec2, Vec2) {
-	position, normal, hit := pushCircleOutOfGoalFrames(position, radius, true)
-	position, interiorNormal, interiorHit := pushCircleOutOfGoalInterior(position, radius)
-	if interiorHit {
-		if hit {
-			normal = normal.Add(interiorNormal).Normalized()
-		} else {
-			normal = interiorNormal
-		}
-		hit = true
-	}
+	position, normal, hit := pushCircleOutOfGoalFrames(position, radius, false)
 	if hit {
 		dot := velocity.Dot(normal)
 		if dot < 0.0 {
@@ -1205,7 +1196,7 @@ func keepLoosePuckOutOfGoalTrap(position, velocity Vec2, radius float64) (Vec2, 
 
 func keepCarriedPuckOutOfGoalTrap(position Vec2, radius float64) Vec2 {
 	position, _, _ = pushCircleOutOfGoalFrames(position, radius, true)
-	position, _, _ = pushCircleOutOfGoalInterior(position, radius)
+	position, _, _ = pushCircleOutOfGoalInterior(position, radius, true)
 	return position
 }
 
@@ -1226,7 +1217,7 @@ func pushCircleOutOfGoalFrames(position Vec2, radius float64, includeFront bool)
 	return result, combinedNormal.Normalized(), hit
 }
 
-func pushCircleOutOfGoalInterior(position Vec2, radius float64) (Vec2, Vec2, bool) {
+func pushCircleOutOfGoalInterior(position Vec2, radius float64, includeFront bool) (Vec2, Vec2, bool) {
 	result := position
 	combinedNormal := Vec2{}
 	hit := false
@@ -1238,7 +1229,7 @@ func pushCircleOutOfGoalInterior(position Vec2, radius float64) (Vec2, Vec2, boo
 		bestDistance := math.Inf(1)
 		bestPoint := Vec2{}
 		bestNormal := Vec2{}
-		for _, segment := range goalFrameSegments(leftGoal, true) {
+		for _, segment := range goalFrameSegments(leftGoal, includeFront) {
 			closest := closestPointOnSegment(result, segment.Start, segment.End)
 			normal := closest.Sub(result).Normalized()
 			if normal.Length() < 1e-6 {
@@ -1407,6 +1398,9 @@ func pointInsideGoal(position Vec2, leftGoal bool) bool {
 	bottom := goalBottom + (backBottom-goalBottom)*depth
 	return position.Y >= top+2.0 && position.Y <= bottom-2.0
 }
+
+
+
 
 
 
