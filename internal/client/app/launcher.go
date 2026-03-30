@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	clientinput "hockeyv2/internal/client/input"
 	"hockeyv2/internal/client/render"
@@ -16,28 +17,38 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
+type onlineRoomPollResult struct {
+	rooms []netcode.RoomSummary
+	err   error
+}
+
 type App struct {
-	screen         appScreen
-	menu           launchMenu
-	setup          launchSetupState
-	solo           *SoloGame
-	remote         *RemoteGame
-	hostServer     *server.Server
-	hostServeErr   chan error
-	hostAdvertiser *discovery.Advertiser
-	browser        *discovery.Browser
-	roomMenuScreen appScreen
+	screen                appScreen
+	menu                  launchMenu
+	setup                 launchSetupState
+	solo                  *SoloGame
+	remote                *RemoteGame
+	hostServer            *server.Server
+	hostServeErr          chan error
+	hostAdvertiser        *discovery.Advertiser
+	browser               *discovery.Browser
+	roomMenuScreen        appScreen
+	onlineRoomUpdates     chan onlineRoomPollResult
+	onlineRoomPollPending bool
+	onlineRoomLastPoll    time.Time
 }
 
 func NewApp() *App {
 	app := &App{
-		screen: appScreenMenu,
+		screen:            appScreenMenu,
+		onlineRoomUpdates: make(chan onlineRoomPollResult, 1),
 		menu: launchMenu{
-			Selected:       menuOptionSolo,
-			Color:          sim.TeamColorBlue,
-			OnlineRoomName: defaultOnlineRoomName(),
-			OnlineRoomCode: "",
-			OnlineFocus:    onlineFieldRoomName,
+			Selected:         menuOptionSolo,
+			Color:            sim.TeamColorBlue,
+			OnlineRoomName:   defaultOnlineRoomName(),
+			OnlineRoomCode:   "",
+			OnlineRoomCursor: 0,
+			OnlineFocus:      onlineFieldRoomName,
 		},
 	}
 	browser, err := discovery.NewBrowser()
@@ -92,6 +103,7 @@ func (a *App) Layout(outsideWidth, outsideHeight int) (int, int) {
 
 func (a *App) Update() error {
 	a.pollDiscoveryUpdates()
+	a.pollOnlineRoomUpdates()
 	a.syncScreenAudio()
 	switch a.screen {
 	case appScreenSolo:
@@ -173,6 +185,8 @@ func (a *App) onlineRoomModel() render.OnlineRoomModel {
 	return render.OnlineRoomModel{
 		RoomName:     a.menu.OnlineRoomName,
 		RoomCode:     a.menu.OnlineRoomCode,
+		Rooms:        a.menu.OnlineRooms,
+		SelectedRoom: a.menu.OnlineRoomCursor,
 		FocusedField: int(a.menu.OnlineFocus),
 		Status:       a.menu.Status,
 	}
@@ -220,6 +234,110 @@ func (a *App) setDiscoveredRooms(rooms []discovery.Room) {
 	if a.menu.RoomCursor >= len(a.menu.Rooms) {
 		a.menu.RoomCursor = len(a.menu.Rooms) - 1
 	}
+}
+
+func (a *App) ensureOnlineRoomPolling() {
+	if a.onlineRoomUpdates == nil {
+		a.onlineRoomUpdates = make(chan onlineRoomPollResult, 1)
+	}
+}
+
+func (a *App) pollOnlineRoomUpdates() {
+	if a.onlineRoomUpdates == nil {
+		return
+	}
+	for {
+		select {
+		case result := <-a.onlineRoomUpdates:
+			a.onlineRoomPollPending = false
+			a.onlineRoomLastPoll = time.Now()
+			if result.err != nil {
+				if a.screen == appScreenOnlineRooms && (a.menu.Status == "" || a.menu.Status == onlineRoomListLoadingStatus) {
+					a.menu.Status = onlineConnectionErrorStatus(result.err)
+				}
+				continue
+			}
+			a.setOnlineRooms(result.rooms)
+			if a.screen == appScreenOnlineRooms && a.menu.Status == onlineRoomListLoadingStatus {
+				a.menu.Status = ""
+			}
+		default:
+			return
+		}
+	}
+}
+
+func (a *App) requestOnlineRoomList(force bool) {
+	a.ensureOnlineRoomPolling()
+	if a.onlineRoomPollPending {
+		return
+	}
+	if !force && !a.onlineRoomLastPoll.IsZero() && time.Since(a.onlineRoomLastPoll) < onlineRoomPollInterval {
+		return
+	}
+	a.onlineRoomPollPending = true
+	addr := onlineServerAddress()
+	go func() {
+		rooms, err := listOnlineRooms(addr)
+		result := onlineRoomPollResult{rooms: rooms, err: err}
+		select {
+		case a.onlineRoomUpdates <- result:
+		default:
+			select {
+			case <-a.onlineRoomUpdates:
+			default:
+			}
+			select {
+			case a.onlineRoomUpdates <- result:
+			default:
+			}
+		}
+	}()
+}
+
+func (a *App) setOnlineRooms(rooms []netcode.RoomSummary) {
+	selectedKey := ""
+	if len(a.menu.OnlineRooms) > 0 && a.menu.OnlineRoomCursor >= 0 && a.menu.OnlineRoomCursor < len(a.menu.OnlineRooms) {
+		selectedKey = onlineRoomKey(a.menu.OnlineRooms[a.menu.OnlineRoomCursor])
+	}
+	a.menu.OnlineRooms = rooms
+	if len(a.menu.OnlineRooms) == 0 {
+		a.menu.OnlineRoomCursor = 0
+		if a.menu.OnlineFocus == onlineFieldRoomList {
+			a.menu.OnlineFocus = onlineFieldRoomName
+		}
+		return
+	}
+	if selectedKey != "" {
+		for index, room := range a.menu.OnlineRooms {
+			if onlineRoomKey(room) == selectedKey {
+				a.menu.OnlineRoomCursor = index
+				return
+			}
+		}
+	}
+	if a.menu.OnlineRoomCursor < 0 {
+		a.menu.OnlineRoomCursor = 0
+	}
+	if a.menu.OnlineRoomCursor >= len(a.menu.OnlineRooms) {
+		a.menu.OnlineRoomCursor = len(a.menu.OnlineRooms) - 1
+	}
+}
+
+func (a *App) cycleOnlineFocus(delta int) onlineField {
+	fields := []onlineField{onlineFieldRoomName, onlineFieldRoomCode}
+	if len(a.menu.OnlineRooms) > 0 {
+		fields = append(fields, onlineFieldRoomList)
+	}
+	current := 0
+	for index, field := range fields {
+		if field == a.menu.OnlineFocus {
+			current = index
+			break
+		}
+	}
+	next := (current + delta + len(fields)) % len(fields)
+	return fields[next]
 }
 
 func (a *App) updateMenu() error {
@@ -305,8 +423,9 @@ func (a *App) activateMenuOption(option menuOption) error {
 	case menuOptionOnline:
 		a.closeLaunchSetup()
 		a.screen = appScreenOnlineRooms
-		a.menu.Status = ""
+		a.menu.Status = onlineRoomListLoadingStatus
 		a.menu.OnlineFocus = onlineFieldRoomName
+		a.requestOnlineRoomList(true)
 		ebiten.SetWindowTitle("Go Hockey - Online Rooms")
 	}
 	return nil
@@ -342,17 +461,32 @@ func (a *App) confirmLaunchSetup() error {
 }
 
 func (a *App) updateOnlineRooms() error {
+	a.requestOnlineRoomList(false)
+	if len(a.menu.OnlineRooms) == 0 && a.menu.OnlineFocus == onlineFieldRoomList {
+		a.menu.OnlineFocus = onlineFieldRoomName
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		a.screen = appScreenMenu
 		a.menu.Status = ""
 		ebiten.SetWindowTitle("Go Hockey")
 		return nil
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyTab) || inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
-		if a.menu.OnlineFocus == onlineFieldRoomName {
-			a.menu.OnlineFocus = onlineFieldRoomCode
-		} else {
-			a.menu.OnlineFocus = onlineFieldRoomName
+	if inpututil.IsKeyJustPressed(ebiten.KeyTab) {
+		a.menu.OnlineFocus = a.cycleOnlineFocus(1)
+	}
+	if a.menu.OnlineFocus == onlineFieldRoomList && len(a.menu.OnlineRooms) > 0 {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) || inpututil.IsKeyJustPressed(ebiten.KeyW) {
+			a.menu.OnlineRoomCursor = (a.menu.OnlineRoomCursor + len(a.menu.OnlineRooms) - 1) % len(a.menu.OnlineRooms)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) || inpututil.IsKeyJustPressed(ebiten.KeyS) {
+			a.menu.OnlineRoomCursor = (a.menu.OnlineRoomCursor + 1) % len(a.menu.OnlineRooms)
+		}
+	} else {
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowUp) {
+			a.menu.OnlineFocus = a.cycleOnlineFocus(-1)
+		}
+		if inpututil.IsKeyJustPressed(ebiten.KeyArrowDown) {
+			a.menu.OnlineFocus = a.cycleOnlineFocus(1)
 		}
 	}
 
@@ -376,20 +510,30 @@ func (a *App) updateOnlineRooms() error {
 		case ui.PointInRect(x, y, render.OnlineRoomJoinButtonRect()):
 			a.menu.OnlineFocus = onlineFieldRoomCode
 			return a.joinOnlineRoomByCode()
+		default:
+			if roomIndex, ok := a.joinOnlineRoomAtCursor(); ok {
+				a.menu.OnlineFocus = onlineFieldRoomList
+				a.menu.OnlineRoomCursor = roomIndex
+				return a.joinOnlineListedRoom(roomIndex)
+			}
 		}
 	}
 
 	if a.menu.OnlineFocus == onlineFieldRoomName {
 		a.menu.OnlineRoomName = clientinput.UpdateRoomNameField(a.menu.OnlineRoomName, onlineRoomNameMaxRunes)
-	} else {
+	} else if a.menu.OnlineFocus == onlineFieldRoomCode {
 		a.menu.OnlineRoomCode = clientinput.UpdateRoomCodeField(a.menu.OnlineRoomCode, onlineRoomCodeLength)
 	}
 
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		if a.menu.OnlineFocus == onlineFieldRoomName {
+		switch a.menu.OnlineFocus {
+		case onlineFieldRoomName:
 			return a.createOnlineRoom()
+		case onlineFieldRoomCode:
+			return a.joinOnlineRoomByCode()
+		case onlineFieldRoomList:
+			return a.joinOnlineListedRoom(a.menu.OnlineRoomCursor)
 		}
-		return a.joinOnlineRoomByCode()
 	}
 	return nil
 }
@@ -421,12 +565,19 @@ func (a *App) startOnlineRoom(roomCode string, createRoom bool, roomName string)
 	clientConn, err := netcode.DialRoom(addr, roomCode, createRoom, roomName)
 	if err != nil {
 		a.menu.Status = onlineConnectionErrorStatus(err)
+		a.requestOnlineRoomList(true)
 		return nil
 	}
 
 	a.roomMenuScreen = appScreenOnlineRooms
 	if clientConn.RoomCode() != "" {
 		a.menu.OnlineRoomCode = clientConn.RoomCode()
+		for index, room := range a.menu.OnlineRooms {
+			if room.Code == clientConn.RoomCode() {
+				a.menu.OnlineRoomCursor = index
+				break
+			}
+		}
 	}
 	if clientConn.RoomName() != "" {
 		a.menu.OnlineRoomName = clientConn.RoomName()
@@ -562,8 +713,9 @@ func (a *App) returnToRoomMenu(status string) {
 		if status != "" {
 			a.menu.Status = status
 		} else {
-			a.menu.Status = ""
+			a.menu.Status = onlineRoomListLoadingStatus
 		}
+		a.requestOnlineRoomList(true)
 		ebiten.SetWindowTitle("Go Hockey - Online Rooms")
 		return
 	case appScreenJoinBrowser:
@@ -605,6 +757,34 @@ func (a *App) stopHostedServer() {
 func (a *App) joinRoomAtCursor() (int, bool) {
 	cursorX, cursorY := ebiten.CursorPosition()
 	for _, card := range render.JoinRoomCards(len(a.menu.Rooms), a.menu.RoomCursor) {
+		if ui.PointInRect(float64(cursorX), float64(cursorY), card.Area) {
+			return card.Index, true
+		}
+	}
+	return 0, false
+}
+
+func (a *App) joinOnlineListedRoom(index int) error {
+	if len(a.menu.OnlineRooms) == 0 {
+		a.menu.Status = "No online rooms are open right now"
+		return nil
+	}
+	if index < 0 || index >= len(a.menu.OnlineRooms) {
+		return nil
+	}
+	room := a.menu.OnlineRooms[index]
+	a.menu.OnlineRoomCursor = index
+	a.menu.OnlineRoomCode = room.Code
+	if !room.Joinable() {
+		a.menu.Status = "That room is already full"
+		return nil
+	}
+	return a.startOnlineRoom(room.Code, false, "")
+}
+
+func (a *App) joinOnlineRoomAtCursor() (int, bool) {
+	cursorX, cursorY := ebiten.CursorPosition()
+	for _, card := range render.OnlineRoomCards(len(a.menu.OnlineRooms), a.menu.OnlineRoomCursor) {
 		if ui.PointInRect(float64(cursorX), float64(cursorY), card.Area) {
 			return card.Index, true
 		}

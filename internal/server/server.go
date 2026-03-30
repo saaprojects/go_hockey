@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -129,8 +130,15 @@ func (s *Server) handleConn(conn net.Conn) {
 		_ = conn.Close()
 		return
 	}
-	if join.Kind != netcode.MessageJoinRequest {
-		_ = encoder.Encode(netcode.Message{Kind: netcode.MessageError, Error: "expected join_request"})
+	switch join.Kind {
+	case netcode.MessageRoomListRequest:
+		_ = encoder.Encode(netcode.Message{Kind: netcode.MessageRoomList, Rooms: s.listRooms()})
+		_ = conn.Close()
+		return
+	case netcode.MessageJoinRequest:
+		// Continue with the multiplayer handshake.
+	default:
+		_ = encoder.Encode(netcode.Message{Kind: netcode.MessageError, Error: "expected join_request or room_list_request"})
 		_ = conn.Close()
 		return
 	}
@@ -377,6 +385,34 @@ func cloneGameState(state sim.GameState) sim.GameState {
 	copyState.HomeSkaters = append([]sim.SkaterState(nil), state.HomeSkaters...)
 	copyState.AwaySkaters = append([]sim.SkaterState(nil), state.AwaySkaters...)
 	return copyState
+}
+
+func (s *Server) listRooms() []netcode.RoomSummary {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rooms := make([]netcode.RoomSummary, 0, len(s.rooms))
+	for roomCode, room := range s.rooms {
+		if roomCode == defaultRoomCode {
+			continue
+		}
+		name := strings.TrimSpace(room.name)
+		if name == "" {
+			name = "Room " + room.code
+		}
+		rooms = append(rooms, netcode.RoomSummary{Code: room.code, Name: name, Players: len(room.teamOwners), Capacity: 2})
+	}
+
+	sort.Slice(rooms, func(i, j int) bool {
+		if rooms[i].Joinable() != rooms[j].Joinable() {
+			return rooms[i].Joinable()
+		}
+		if rooms[i].Name != rooms[j].Name {
+			return rooms[i].Name < rooms[j].Name
+		}
+		return rooms[i].Code < rooms[j].Code
+	})
+	return rooms
 }
 
 func normalizeRoomCode(code string) string {

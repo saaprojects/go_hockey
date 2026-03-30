@@ -5,14 +5,21 @@ import (
 	"net"
 	"os"
 	"strings"
+	"time"
+
+	"hockeyv2/internal/netcode"
 )
 
 const (
-	onlineServerEnvVar      = "GO_HOCKEY_ONLINE_ADDR"
-	defaultOnlineServerAddr = "127.0.0.1:4242"
-	onlineRoomCodeLength    = 5
-	onlineRoomNameMaxRunes  = 28
+	onlineServerEnvVar          = "GO_HOCKEY_ONLINE_ADDR"
+	defaultOnlineServerAddr     = "127.0.0.1:4242"
+	onlineRoomCodeLength        = 5
+	onlineRoomNameMaxRunes      = 28
+	onlineRoomPollInterval      = 2 * time.Second
+	onlineRoomListLoadingStatus = "Checking for online rooms..."
 )
+
+var listOnlineRooms = netcode.ListRooms
 
 func onlineServerAddress() string {
 	if override := strings.TrimSpace(os.Getenv(onlineServerEnvVar)); override != "" {

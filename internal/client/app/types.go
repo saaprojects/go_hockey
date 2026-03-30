@@ -2,6 +2,7 @@ package app
 
 import (
 	"hockeyv2/internal/discovery"
+	"hockeyv2/internal/netcode"
 	"hockeyv2/internal/sim"
 )
 
@@ -27,14 +28,16 @@ type launchSetupState struct {
 }
 
 type launchMenu struct {
-	Selected       menuOption
-	Color          sim.TeamColor
-	Status         string
-	Rooms          []discovery.Room
-	RoomCursor     int
-	OnlineRoomName string
-	OnlineRoomCode string
-	OnlineFocus    onlineField
+	Selected         menuOption
+	Color            sim.TeamColor
+	Status           string
+	Rooms            []discovery.Room
+	RoomCursor       int
+	OnlineRoomName   string
+	OnlineRoomCode   string
+	OnlineRooms      []netcode.RoomSummary
+	OnlineRoomCursor int
+	OnlineFocus      onlineField
 }
 
 const (
@@ -69,6 +72,7 @@ const (
 const (
 	onlineFieldRoomName onlineField = iota
 	onlineFieldRoomCode
+	onlineFieldRoomList
 )
 
 var launcherColorCycle = []sim.TeamColor{
@@ -130,4 +134,8 @@ func (s *launchSetupState) Close() {
 
 func roomKey(room discovery.Room) string {
 	return room.Code + "|" + room.Addr
+}
+
+func onlineRoomKey(room netcode.RoomSummary) string {
+	return room.Code
 }

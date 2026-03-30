@@ -5,14 +5,30 @@ import "hockeyv2/internal/sim"
 type MessageKind string
 
 const (
-	MessageJoinRequest  MessageKind = "join_request"
-	MessageJoinAccepted MessageKind = "join_accepted"
-	MessageInputFrame   MessageKind = "input_frame"
-	MessageSnapshot     MessageKind = "snapshot"
-	MessageError        MessageKind = "error"
-	MessagePing         MessageKind = "ping"
-	MessagePong         MessageKind = "pong"
+	MessageJoinRequest     MessageKind = "join_request"
+	MessageJoinAccepted    MessageKind = "join_accepted"
+	MessageRoomListRequest MessageKind = "room_list_request"
+	MessageRoomList        MessageKind = "room_list"
+	MessageInputFrame      MessageKind = "input_frame"
+	MessageSnapshot        MessageKind = "snapshot"
+	MessageError           MessageKind = "error"
+	MessagePing            MessageKind = "ping"
+	MessagePong            MessageKind = "pong"
 )
+
+type RoomSummary struct {
+	Code     string `json:"code"`
+	Name     string `json:"name"`
+	Players  int    `json:"players"`
+	Capacity int    `json:"capacity"`
+}
+
+func (r RoomSummary) Joinable() bool {
+	if r.Capacity <= 0 {
+		return true
+	}
+	return r.Players < r.Capacity
+}
 
 type Message struct {
 	Kind       MessageKind    `json:"kind"`
@@ -32,6 +48,7 @@ type Message struct {
 	Error      string         `json:"error,omitempty"`
 	RoomCode   string         `json:"room_code,omitempty"`
 	RoomName   string         `json:"room_name,omitempty"`
+	Rooms      []RoomSummary  `json:"rooms,omitempty"`
 	CreateRoom bool           `json:"create_room,omitempty"`
 	Host       bool           `json:"host,omitempty"`
 }

@@ -312,3 +312,57 @@ func TestClientReadLoopStopsAfterClose(t *testing.T) {
 	case <-time.After(50 * time.Millisecond):
 	}
 }
+
+func TestListRoomsRequestsAndDecodesRooms(t *testing.T) {
+	addr := startTestTCPServer(t, func(conn net.Conn) {
+		defer conn.Close()
+		decoder := json.NewDecoder(bufio.NewReader(conn))
+		encoder := json.NewEncoder(conn)
+		var request Message
+		if err := decoder.Decode(&request); err != nil {
+			t.Errorf("decode request: %v", err)
+			return
+		}
+		if request.Kind != MessageRoomListRequest {
+			t.Errorf("expected room list request, got %q", request.Kind)
+			return
+		}
+		rooms := []RoomSummary{{Code: "ABCDE", Name: "Friday Night", Players: 1, Capacity: 2}, {Code: "FGHJK", Name: "Full House", Players: 2, Capacity: 2}}
+		if err := encoder.Encode(Message{Kind: MessageRoomList, Rooms: rooms}); err != nil {
+			t.Errorf("encode room list: %v", err)
+		}
+	})
+
+	rooms, err := ListRooms(addr)
+	if err != nil {
+		t.Fatalf("list rooms: %v", err)
+	}
+	if len(rooms) != 2 {
+		t.Fatalf("expected 2 rooms, got %+v", rooms)
+	}
+	if rooms[0].Code != "ABCDE" || rooms[0].Name != "Friday Night" || !rooms[0].Joinable() {
+		t.Fatalf("unexpected first room %+v", rooms[0])
+	}
+	if rooms[1].Code != "FGHJK" || rooms[1].Joinable() {
+		t.Fatalf("unexpected second room %+v", rooms[1])
+	}
+}
+
+func TestListRoomsReturnsServerError(t *testing.T) {
+	addr := startTestTCPServer(t, func(conn net.Conn) {
+		defer conn.Close()
+		decoder := json.NewDecoder(bufio.NewReader(conn))
+		encoder := json.NewEncoder(conn)
+		var request Message
+		_ = decoder.Decode(&request)
+		_ = encoder.Encode(Message{Kind: MessageError, Error: "room server unavailable"})
+	})
+
+	rooms, err := ListRooms(addr)
+	if err == nil {
+		t.Fatalf("expected room list error, got rooms %+v", rooms)
+	}
+	if err.Error() != "room server unavailable" {
+		t.Fatalf("unexpected room list error %v", err)
+	}
+}

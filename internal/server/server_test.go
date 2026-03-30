@@ -265,3 +265,48 @@ func TestServerClientSendEncodesMessage(t *testing.T) {
 		t.Fatalf("unexpected decoded message %+v", decoded)
 	}
 }
+
+func TestListRoomsReturnsCustomRoomsAndExcludesDefaultRoom(t *testing.T) {
+	srv, serveDone := startTestServer(t)
+	defer stopTestServer(t, srv, serveDone)
+
+	srv.SetLobbyColors(sim.TeamColorOrange, sim.TeamColorBlue)
+
+	openHost, err := netcode.DialRoom(srv.Addr(), "", true, "Open Room")
+	if err != nil {
+		t.Fatalf("create open room: %v", err)
+	}
+	defer openHost.Close()
+
+	fullHost, err := netcode.DialRoom(srv.Addr(), "", true, "Full Room")
+	if err != nil {
+		t.Fatalf("create full room: %v", err)
+	}
+	defer fullHost.Close()
+
+	fullJoiner, err := netcode.DialRoom(srv.Addr(), fullHost.RoomCode(), false, "")
+	if err != nil {
+		t.Fatalf("fill room: %v", err)
+	}
+	defer fullJoiner.Close()
+
+	rooms, err := netcode.ListRooms(srv.Addr())
+	if err != nil {
+		t.Fatalf("list rooms: %v", err)
+	}
+	if len(rooms) != 2 {
+		t.Fatalf("expected 2 custom rooms, got %+v", rooms)
+	}
+	if rooms[0].Name != "Open Room" || rooms[0].Code != openHost.RoomCode() {
+		t.Fatalf("expected joinable room first, got %+v", rooms[0])
+	}
+	if !rooms[0].Joinable() {
+		t.Fatalf("expected first room to be joinable, got %+v", rooms[0])
+	}
+	if rooms[1].Name != "Full Room" || rooms[1].Code != fullHost.RoomCode() {
+		t.Fatalf("expected full room second, got %+v", rooms[1])
+	}
+	if rooms[1].Joinable() {
+		t.Fatalf("expected second room to be full, got %+v", rooms[1])
+	}
+}

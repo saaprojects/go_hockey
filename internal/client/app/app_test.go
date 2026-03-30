@@ -3,6 +3,7 @@ package app
 import (
 	"hockeyv2/internal/client/ui"
 	"hockeyv2/internal/discovery"
+	"hockeyv2/internal/netcode"
 	"hockeyv2/internal/sim"
 	"testing"
 )
@@ -242,11 +243,17 @@ func TestActivateMenuOptionTransitions(t *testing.T) {
 		t.Fatalf("unexpected join search status %q", app.menu.Status)
 	}
 
+	previousListOnlineRooms := listOnlineRooms
+	listOnlineRooms = func(addr string) ([]netcode.RoomSummary, error) {
+		return nil, nil
+	}
+	defer func() { listOnlineRooms = previousListOnlineRooms }()
+
 	app = &App{}
 	if err := app.activateMenuOption(menuOptionOnline); err != nil {
 		t.Fatalf("activate online: %v", err)
 	}
-	if app.screen != appScreenOnlineRooms || app.menu.Status != "" || app.menu.OnlineFocus != onlineFieldRoomName {
+	if app.screen != appScreenOnlineRooms || app.menu.Status != onlineRoomListLoadingStatus || app.menu.OnlineFocus != onlineFieldRoomName {
 		t.Fatalf("unexpected online room state screen=%v status=%q focus=%v", app.screen, app.menu.Status, app.menu.OnlineFocus)
 	}
 }
@@ -547,5 +554,39 @@ func TestSoloIntermissionMenuContentAndStatus(t *testing.T) {
 	}
 	if status := game.soloStatus(); status != "Intermission  Choose Continue, Restart Match, or Quit" {
 		t.Fatalf("unexpected intermission status %q", status)
+	}
+}
+
+func TestSetOnlineRoomsPreservesSelectedRoom(t *testing.T) {
+	app := &App{menu: launchMenu{OnlineRooms: []netcode.RoomSummary{{Code: "AB12C", Name: "First"}, {Code: "CD34E", Name: "Second"}}, OnlineRoomCursor: 1, OnlineFocus: onlineFieldRoomList}}
+	app.setOnlineRooms([]netcode.RoomSummary{{Code: "ZZ99Z", Name: "Other"}, {Code: "CD34E", Name: "Second"}})
+	if app.menu.OnlineRoomCursor != 1 {
+		t.Fatalf("expected online cursor to follow matching room, got %d", app.menu.OnlineRoomCursor)
+	}
+
+	app.setOnlineRooms(nil)
+	if app.menu.OnlineRoomCursor != 0 || app.menu.OnlineFocus != onlineFieldRoomName {
+		t.Fatalf("expected empty online list to reset cursor/focus, got cursor=%d focus=%v", app.menu.OnlineRoomCursor, app.menu.OnlineFocus)
+	}
+}
+
+func TestJoinOnlineListedRoomStatusGuards(t *testing.T) {
+	app := &App{}
+	if err := app.joinOnlineListedRoom(0); err != nil {
+		t.Fatalf("join listed room without rooms: %v", err)
+	}
+	if app.menu.Status != "No online rooms are open right now" {
+		t.Fatalf("unexpected empty online room status %q", app.menu.Status)
+	}
+
+	app.menu.OnlineRooms = []netcode.RoomSummary{{Code: "ABCDE", Name: "Full Room", Players: 2, Capacity: 2}}
+	if err := app.joinOnlineListedRoom(0); err != nil {
+		t.Fatalf("join full listed room: %v", err)
+	}
+	if app.menu.Status != "That room is already full" {
+		t.Fatalf("unexpected full online room status %q", app.menu.Status)
+	}
+	if app.menu.OnlineRoomCode != "ABCDE" {
+		t.Fatalf("expected selected online room code to populate, got %q", app.menu.OnlineRoomCode)
 	}
 }

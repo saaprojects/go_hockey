@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"hockeyv2/internal/discovery"
+	"hockeyv2/internal/netcode"
 	"hockeyv2/internal/sim"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -74,14 +75,20 @@ func TestLauncherSetupReadyAndOnlineRects(t *testing.T) {
 	}
 
 	onlinePanel := OnlineRoomPanelRect()
-	if OnlineRoomJoinCardRect().Y <= OnlineRoomCreateCardRect().Y {
-		t.Fatalf("expected join card below create card")
+	if OnlineRoomJoinCardRect().X <= OnlineRoomCreateCardRect().X {
+		t.Fatalf("expected join card to the right of create card")
+	}
+	if OnlineRoomJoinCardRect().Y != OnlineRoomCreateCardRect().Y {
+		t.Fatalf("expected online cards aligned on the same row")
 	}
 	if OnlineRoomCreateButtonRect().X <= OnlineRoomNameFieldRect().X {
 		t.Fatalf("expected create button to the right of the room name field")
 	}
-	if OnlineRoomBackRect().Y <= OnlineRoomJoinCardRect().Y+OnlineRoomJoinCardRect().H {
-		t.Fatalf("expected online back button below room cards")
+	if OnlineRoomListRect().Y <= OnlineRoomCreateCardRect().Y+OnlineRoomCreateCardRect().H {
+		t.Fatalf("expected online room list below create and join cards")
+	}
+	if OnlineRoomBackRect().Y <= OnlineRoomListRect().Y+OnlineRoomListRect().H {
+		t.Fatalf("expected online back button below room list")
 	}
 	if OnlineRoomStatusRect().X <= OnlineRoomBackRect().X+OnlineRoomBackRect().W {
 		t.Fatalf("expected status rect to appear after the back button")
@@ -141,6 +148,6 @@ func TestRenderDrawFunctionsSmoke(t *testing.T) {
 		SelectedRoom: 1,
 		Status:       "Connected",
 	})
-	DrawOnlineRoom(screen, OnlineRoomModel{RoomName: "Friday Night", RoomCode: "AB12C", FocusedField: 1, Status: "Joined room AB12C"})
+	DrawOnlineRoom(screen, OnlineRoomModel{RoomName: "Friday Night", RoomCode: "AB12C", Rooms: []netcode.RoomSummary{{Code: "AB12C", Name: "Friday Night", Players: 1, Capacity: 2}}, SelectedRoom: 0, FocusedField: 2, Status: "Joined room AB12C"})
 	DrawOnlineRoom(screen, OnlineRoomModel{RoomName: "Test Room", RoomCode: "", FocusedField: 0, Status: "Tab switches fields. Enter creates or joins. Esc goes back."})
 }

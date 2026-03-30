@@ -31,6 +31,32 @@ func Dial(addr string) (*Client, error) {
 	return DialRoom(addr, "", false, "")
 }
 
+func ListRooms(addr string) ([]RoomSummary, error) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	defer conn.Close()
+
+	decoder := json.NewDecoder(bufio.NewReader(conn))
+	encoder := json.NewEncoder(conn)
+	if err := encoder.Encode(Message{Kind: MessageRoomListRequest}); err != nil {
+		return nil, err
+	}
+
+	var first Message
+	if err := decoder.Decode(&first); err != nil {
+		return nil, err
+	}
+	if first.Kind == MessageError {
+		return nil, errors.New(first.Error)
+	}
+	if first.Kind != MessageRoomList {
+		return nil, fmt.Errorf("unexpected first message: %s", first.Kind)
+	}
+	return append([]RoomSummary(nil), first.Rooms...), nil
+}
+
 func DialRoom(addr, roomCode string, createRoom bool, roomName string) (*Client, error) {
 	conn, err := net.Dial("tcp", addr)
 	if err != nil {
