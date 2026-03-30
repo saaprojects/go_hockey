@@ -865,7 +865,7 @@ func updatePuck(state *GameState) {
 			awardGoal(state, scoringTeam)
 			return
 		}
-		state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius+1.0)
+		state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius)
 		updatePuckTrapState(state, previousPosition)
 		return
 	}
@@ -881,7 +881,7 @@ func updatePuck(state *GameState) {
 	state.Puck.Position, state.Puck.Velocity = containPuckToRink(state.Puck.Position, state.Puck.Velocity, state.Puck.Radius+1.0)
 	var frameNormal Vec2
 	var frameHit bool
-	state.Puck.Position, frameNormal, frameHit = pushCircleOutOfGoalFrames(state.Puck.Position, state.Puck.Radius+1.0, false)
+	state.Puck.Position, frameNormal, frameHit = pushCircleOutOfGoalFrames(state.Puck.Position, state.Puck.Radius, false)
 	if frameHit {
 		dot := state.Puck.Velocity.Dot(frameNormal)
 		if dot < 0.0 {
@@ -918,7 +918,7 @@ func updatePuck(state *GameState) {
 		return
 	}
 
-	state.Puck.Position, state.Puck.Velocity = keepLoosePuckOutOfGoalTrap(state.Puck.Position, state.Puck.Velocity, state.Puck.Radius+1.0)
+	state.Puck.Position, state.Puck.Velocity = keepLoosePuckOutOfGoalTrap(state.Puck.Position, state.Puck.Velocity, state.Puck.Radius)
 
 	if state.Puck.PickupLockTicks > 0 {
 		updatePuckTrapState(state, previousPosition)
@@ -942,7 +942,7 @@ func updatePuck(state *GameState) {
 		awardGoal(state, scoringTeam)
 		return
 	}
-	state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius+1.0)
+	state.Puck.Position = keepCarriedPuckOutOfGoalTrap(state.Puck.Position, state.Puck.Radius)
 	updatePuckTrapState(state, previousPosition)
 }
 
@@ -1407,3 +1407,6 @@ func pointInsideGoal(position Vec2, leftGoal bool) bool {
 	bottom := goalBottom + (backBottom-goalBottom)*depth
 	return position.Y >= top+2.0 && position.Y <= bottom-2.0
 }
+
+
+

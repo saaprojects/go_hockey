@@ -365,6 +365,34 @@ func TestRoundedFrontPostCollisionUsesPostCircle(t *testing.T) {
 	}
 }
 
+func TestNearPostGoalLaneDoesNotHitInvisibleFrame(t *testing.T) {
+	tests := []struct {
+		name     string
+		position Vec2
+	}{
+		{
+			name:     "right goal upper lane stays open",
+			position: Vec2{X: AwayGoalLineX + GoalScoreFullCrossMargin + 1, Y: CenterY - GoalHalfHeight + GoalFrontPostRadius + 8},
+		},
+		{
+			name:     "left goal lower lane stays open",
+			position: Vec2{X: HomeGoalLineX - GoalScoreFullCrossMargin - 1, Y: CenterY + GoalHalfHeight - GoalFrontPostRadius - 8},
+		},
+	}
+
+	puckRadius := NewGameState().Puck.Radius
+
+	for _, tc := range tests {
+		if !pointInsideGoal(tc.position, tc.position.X < CenterX) {
+			t.Fatalf("%s: expected test position to already be inside the goal mouth, got %#v", tc.name, tc.position)
+		}
+		_, _, hit := pushCircleOutOfGoalFrames(tc.position, puckRadius, false)
+		if hit {
+			t.Fatalf("%s: expected no frame collision in the open near-post scoring lane", tc.name)
+		}
+	}
+}
+
 func TestCarriedPuckBehindNetDoesNotScore(t *testing.T) {
 	state := NewGameState()
 	state.FaceoffTicks = 0
@@ -869,3 +897,4 @@ func TestMatchHelpers(t *testing.T) {
 		t.Fatalf("expected home ready blocked when away already locked same color")
 	}
 }
+

@@ -46,11 +46,11 @@ const (
 	GoalieReachBuffer        = 28.0
 	ShotTargetMargin         = 10.0
 	GoalTrapFaceoff          = 3.0
-	GoalFrameRadius          = 4.0
+	GoalFrameRadius          = 2.0
 	GoalFrontPostRadius      = 8.0
 	GoalScoreFullCrossMargin = 7.0
-	GoalieDepthTrack         = 0.10
-	GoalieLateralTrack       = 0.18
+	GoalieDepthTrack         = 0.08
+	GoalieLateralTrack       = 0.15
 )
 
 type TeamTuning struct {
@@ -92,3 +92,8 @@ func tuningFor(team Team) TeamTuning {
 func ticksFromSeconds(seconds float64) int {
 	return int(seconds*TickRate + 0.5)
 }
+
+
+
+
+
