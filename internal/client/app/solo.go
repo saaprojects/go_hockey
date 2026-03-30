@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+
 	clientinput "hockeyv2/internal/client/input"
 	"hockeyv2/internal/client/render"
 	"hockeyv2/internal/client/ui"
@@ -24,6 +26,7 @@ func NewSoloGame() *SoloGame {
 
 func NewSoloGameWithColors(homeColor, awayColor sim.TeamColor) *SoloGame {
 	state := sim.NewGameState()
+	state.UseMenus = true
 	state.HomeColor = homeColor
 	state.AwayColor = awayColor
 	return &SoloGame{state: state, sounds: defaultSoundboard()}
@@ -47,7 +50,7 @@ func (g *SoloGame) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) || inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		if g.menu.Mode == matchMenuModePause {
 			g.menu.Close()
-		} else if !g.state.GameOver {
+		} else if g.menu.Mode == matchMenuModeHidden && !g.state.GameOver && g.state.Phase == sim.MatchPhasePlaying {
 			g.menu.Open(matchMenuModePause)
 		}
 	}
@@ -97,7 +100,13 @@ func (g *SoloGame) syncMenuState() {
 		}
 		return
 	}
-	if g.menu.Mode == matchMenuModePostgame {
+	if g.state.Phase == sim.MatchPhaseIntermission {
+		if g.menu.Mode != matchMenuModeIntermission {
+			g.menu.Open(matchMenuModeIntermission)
+		}
+		return
+	}
+	if g.menu.Mode == matchMenuModePostgame || g.menu.Mode == matchMenuModeIntermission {
 		g.menu.Close()
 	}
 }
@@ -106,8 +115,17 @@ func (g *SoloGame) restartMatch() {
 	homeColor := g.state.HomeColor
 	awayColor := g.state.AwayColor
 	g.state = sim.NewGameState()
+	g.state.UseMenus = true
 	g.state.HomeColor = homeColor
 	g.state.AwayColor = awayColor
+	g.menu.Close()
+}
+
+func (g *SoloGame) continueIntermission() {
+	g.state.Phase = sim.MatchPhasePlaying
+	g.state.PhaseTicks = 0
+	g.state.HomeReady = false
+	g.state.AwayReady = false
 	g.menu.Close()
 }
 
@@ -130,6 +148,15 @@ func (g *SoloGame) updateMatchMenu() {
 		case 2:
 			g.action = matchMenuActionQuit
 		}
+	case matchMenuModeIntermission:
+		switch activatedIndex {
+		case 0:
+			g.continueIntermission()
+		case 1:
+			g.restartMatch()
+		case 2:
+			g.action = matchMenuActionQuit
+		}
 	case matchMenuModePostgame:
 		switch activatedIndex {
 		case 0:
@@ -144,6 +171,8 @@ func (g *SoloGame) matchMenuContent() (string, string, string, []ui.MenuEntry) {
 	switch g.menu.Mode {
 	case matchMenuModePause:
 		return "Pause Menu", "Match paused. Choose what you want to do next.", "Enter selects. Esc resumes the match.", []ui.MenuEntry{{Label: g.resumeLabel()}, {Label: g.restartLabel()}, {Label: g.quitLabel()}}
+	case matchMenuModeIntermission:
+		return g.intermissionTitle(), g.intermissionSubtitle(), "Enter continues to the next faceoff.", []ui.MenuEntry{{Label: g.continueLabel()}, {Label: g.restartLabel()}, {Label: g.quitLabel()}}
 	case matchMenuModePostgame:
 		return g.postgameTitle(), "The match is over.", "Enter selects an option.", []ui.MenuEntry{{Label: g.playAgainLabel()}, {Label: g.quitLabel()}}
 	default:
@@ -160,6 +189,9 @@ func (g *SoloGame) soloStatus() string {
 	status := "Solo mode  WASD move  Shift pass  Space shoot/check  Tab switch  Esc menu"
 	if g.menu.Mode == matchMenuModePause {
 		status = "Paused  Choose Resume, Restart Match, or Quit"
+	}
+	if g.menu.Mode == matchMenuModeIntermission {
+		status = "Intermission  Choose Continue, Restart Match, or Quit"
 	}
 	if g.menu.Mode == matchMenuModePostgame {
 		status = "Game over  Choose Play Again or Quit"
@@ -178,8 +210,31 @@ func (g *SoloGame) postgameTitle() string {
 	}
 }
 
+func (g *SoloGame) intermissionTitle() string {
+	period := g.state.LastIntermissionStats.Period
+	if period <= 0 && g.state.Period > 1 {
+		period = g.state.Period - 1
+	}
+	if period <= 0 {
+		return "Intermission"
+	}
+	return fmt.Sprintf("End of Period %d", period)
+}
+
+func (g *SoloGame) intermissionSubtitle() string {
+	stats := g.state.LastIntermissionStats
+	if stats.Period <= 0 {
+		return "Take a breather, then continue when you are ready."
+	}
+	return fmt.Sprintf("Home %d shots / %d goals   Away %d shots / %d goals", stats.Home.ShotsOnGoal, stats.Home.Goals, stats.Away.ShotsOnGoal, stats.Away.Goals)
+}
+
 func (g *SoloGame) resumeLabel() string {
 	return "Resume"
+}
+
+func (g *SoloGame) continueLabel() string {
+	return "Continue"
 }
 
 func (g *SoloGame) restartLabel() string {

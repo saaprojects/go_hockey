@@ -55,6 +55,7 @@ const (
 const (
 	matchMenuModeHidden matchMenuMode = iota
 	matchMenuModePause
+	matchMenuModeIntermission
 	matchMenuModePostgame
 	matchMenuModeDisconnected
 )

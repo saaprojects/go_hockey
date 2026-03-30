@@ -506,3 +506,46 @@ func TestSoloMatchMenuEntriesMirrorsContent(t *testing.T) {
 		t.Fatalf("unexpected menu entries %+v", entries)
 	}
 }
+
+func TestNewSoloGameEnablesMenus(t *testing.T) {
+	game := NewSoloGame()
+	if !game.state.UseMenus {
+		t.Fatalf("expected solo game to enable menu phases")
+	}
+}
+
+func TestSoloSyncMenuStateTracksIntermission(t *testing.T) {
+	game := NewSoloGame()
+	game.state.Phase = sim.MatchPhaseIntermission
+	game.state.LastIntermissionStats = sim.PeriodStats{Period: 1, Home: sim.TeamPeriodStats{ShotsOnGoal: 6, Goals: 2}, Away: sim.TeamPeriodStats{ShotsOnGoal: 4, Goals: 1}}
+	game.syncMenuState()
+	if game.menu.Mode != matchMenuModeIntermission {
+		t.Fatalf("expected intermission menu, got %v", game.menu.Mode)
+	}
+
+	game.continueIntermission()
+	if game.menu.Mode != matchMenuModeHidden {
+		t.Fatalf("expected menu to close after continuing, got %v", game.menu.Mode)
+	}
+	if game.state.Phase != sim.MatchPhasePlaying {
+		t.Fatalf("expected match to resume playing, got %q", game.state.Phase)
+	}
+}
+
+func TestSoloIntermissionMenuContentAndStatus(t *testing.T) {
+	game := NewSoloGame()
+	game.state.Phase = sim.MatchPhaseIntermission
+	game.state.LastIntermissionStats = sim.PeriodStats{Period: 2, Home: sim.TeamPeriodStats{ShotsOnGoal: 8, Goals: 3}, Away: sim.TeamPeriodStats{ShotsOnGoal: 5, Goals: 2}}
+	game.menu.Mode = matchMenuModeIntermission
+
+	title, subtitle, footer, entries := game.matchMenuContent()
+	if title != "End of Period 2" || subtitle == "" || footer == "" || len(entries) != 3 {
+		t.Fatalf("unexpected intermission menu content: %q %q %q %+v", title, subtitle, footer, entries)
+	}
+	if entries[0].Label != "Continue" {
+		t.Fatalf("expected continue entry first, got %+v", entries)
+	}
+	if status := game.soloStatus(); status != "Intermission  Choose Continue, Restart Match, or Quit" {
+		t.Fatalf("unexpected intermission status %q", status)
+	}
+}
